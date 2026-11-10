@@ -1,0 +1,277 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* Theme 1: Celestial Twilight (Default - Midnight Navy, Glowing Amber Gold, Luminous Teal) */
+    --theme-bg-gradient: radial-gradient(circle at 18% 12%, #111d38 0%, #0a1122 45%, #050811 100%);
+    --theme-card-bg: rgba(15, 23, 42, 0.82);
+    --theme-card-bg-subtle: rgba(10, 16, 30, 0.75);
+    --theme-card-hover: rgba(26, 38, 64, 0.92);
+    --theme-card-border: rgba(56, 75, 107, 0.55);
+    --theme-card-border-glow: rgba(20, 184, 166, 0.55);
+    --theme-header-bg: rgba(8, 13, 26, 0.90);
+    --theme-nav-bg: rgba(6, 10, 20, 0.94);
+    --theme-input-bg: rgba(11, 18, 33, 0.85);
+    --theme-input-border: rgba(56, 75, 107, 0.65);
+    --theme-accent-primary: #f59e0b;
+    --theme-accent-primary-gradient: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%);
+    --theme-accent-primary-text: #0b0f19;
+    --theme-accent-secondary: #14b8a6;
+    --theme-accent-secondary-gradient: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+    --theme-accent-badge-bg: rgba(20, 184, 166, 0.15);
+    --theme-accent-badge-text: #2dd4bf;
+    --theme-accent-badge-border: rgba(20, 184, 166, 0.35);
+    --theme-gold-badge-bg: rgba(245, 158, 11, 0.15);
+    --theme-gold-badge-text: #fbbf24;
+    --theme-gold-badge-border: rgba(245, 158, 11, 0.35);
+    --theme-text-title: #f8fafc;
+    --theme-text-body: #e2e8f0;
+    --theme-text-muted: #94a3b8;
+    --theme-shadow-glow: rgba(20, 184, 166, 0.2);
+    --theme-ambient-glow-1: rgba(20, 184, 166, 0.22);
+    --theme-ambient-glow-2: rgba(245, 158, 11, 0.16);
+  }
+
+  [data-theme="sunset"] {
+    /* Theme 2: Sunset Radiance (Deep Blackberry Velvet, Rose Gold, Warm Coral) */
+    --theme-bg-gradient: radial-gradient(circle at 20% 12%, #2d1024 0%, #170a1b 48%, #0b050d 100%);
+    --theme-card-bg: rgba(35, 16, 38, 0.82);
+    --theme-card-bg-subtle: rgba(24, 10, 26, 0.75);
+    --theme-card-hover: rgba(52, 24, 56, 0.92);
+    --theme-card-border: rgba(125, 48, 92, 0.55);
+    --theme-card-border-glow: rgba(244, 63, 94, 0.55);
+    --theme-header-bg: rgba(20, 9, 23, 0.90);
+    --theme-nav-bg: rgba(14, 6, 17, 0.94);
+    --theme-input-bg: rgba(26, 11, 29, 0.85);
+    --theme-input-border: rgba(125, 48, 92, 0.65);
+    --theme-accent-primary: #f43f5e;
+    --theme-accent-primary-gradient: linear-gradient(135deg, #f43f5e 0%, #f97316 100%);
+    --theme-accent-primary-text: #1a060d;
+    --theme-accent-secondary: #fb923c;
+    --theme-accent-secondary-gradient: linear-gradient(135deg, #fb923c 0%, #db2777 100%);
+    --theme-accent-badge-bg: rgba(244, 63, 94, 0.15);
+    --theme-accent-badge-text: #fda4af;
+    --theme-accent-badge-border: rgba(244, 63, 94, 0.35);
+    --theme-gold-badge-bg: rgba(251, 146, 60, 0.15);
+    --theme-gold-badge-text: #fdba74;
+    --theme-gold-badge-border: rgba(251, 146, 60, 0.35);
+    --theme-text-title: #fff1f2;
+    --theme-text-body: #fecdd3;
+    --theme-text-muted: #f472b6;
+    --theme-shadow-glow: rgba(244, 63, 94, 0.25);
+    --theme-ambient-glow-1: rgba(244, 63, 94, 0.22);
+    --theme-ambient-glow-2: rgba(251, 146, 60, 0.18);
+  }
+
+  [data-theme="emerald"] {
+    /* Theme 3: Emerald Sanctuary (Deep Forest Jade, Luminous Mint, Golden Citron) */
+    --theme-bg-gradient: radial-gradient(circle at 18% 12%, #0e2d24 0%, #071914 48%, #030d0a 100%);
+    --theme-card-bg: rgba(11, 35, 28, 0.82);
+    --theme-card-bg-subtle: rgba(7, 24, 19, 0.75);
+    --theme-card-hover: rgba(18, 52, 42, 0.92);
+    --theme-card-border: rgba(24, 94, 74, 0.6);
+    --theme-card-border-glow: rgba(16, 185, 129, 0.55);
+    --theme-header-bg: rgba(6, 23, 18, 0.90);
+    --theme-nav-bg: rgba(4, 16, 12, 0.94);
+    --theme-input-bg: rgba(9, 28, 22, 0.85);
+    --theme-input-border: rgba(24, 94, 74, 0.65);
+    --theme-accent-primary: #10b981;
+    --theme-accent-primary-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    --theme-accent-primary-text: #021a11;
+    --theme-accent-secondary: #eab308;
+    --theme-accent-secondary-gradient: linear-gradient(135deg, #eab308 0%, #10b981 100%);
+    --theme-accent-badge-bg: rgba(16, 185, 129, 0.15);
+    --theme-accent-badge-text: #6ee7b7;
+    --theme-accent-badge-border: rgba(16, 185, 129, 0.35);
+    --theme-gold-badge-bg: rgba(234, 179, 8, 0.15);
+    --theme-gold-badge-text: #fde047;
+    --theme-gold-badge-border: rgba(234, 179, 8, 0.35);
+    --theme-text-title: #ecfdf5;
+    --theme-text-body: #d1fae5;
+    --theme-text-muted: #86efac;
+    --theme-shadow-glow: rgba(16, 185, 129, 0.25);
+    --theme-ambient-glow-1: rgba(16, 185, 129, 0.24);
+    --theme-ambient-glow-2: rgba(234, 179, 8, 0.16);
+  }
+
+  [data-theme="daylight"] {
+    /* Theme 4: Warm Daylight (Porcelain Light Canvas, Heritage Amber, Crisp Marine) */
+    --theme-bg-gradient: radial-gradient(circle at 15% 12%, #f8fafc 0%, #f1f5f9 55%, #e2e8f0 100%);
+    --theme-card-bg: rgba(255, 255, 255, 0.92);
+    --theme-card-bg-subtle: rgba(248, 250, 252, 0.9);
+    --theme-card-hover: rgba(255, 255, 255, 1);
+    --theme-card-border: rgba(203, 213, 225, 0.85);
+    --theme-card-border-glow: rgba(217, 119, 6, 0.55);
+    --theme-header-bg: rgba(255, 255, 255, 0.95);
+    --theme-nav-bg: rgba(255, 255, 255, 0.97);
+    --theme-input-bg: rgba(248, 250, 252, 0.95);
+    --theme-input-border: rgba(203, 213, 225, 0.9);
+    --theme-accent-primary: #d97706;
+    --theme-accent-primary-gradient: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+    --theme-accent-primary-text: #ffffff;
+    --theme-accent-secondary: #0d9488;
+    --theme-accent-secondary-gradient: linear-gradient(135deg, #0d9488 0%, #047857 100%);
+    --theme-accent-badge-bg: rgba(13, 148, 136, 0.12);
+    --theme-accent-badge-text: #0f766e;
+    --theme-accent-badge-border: rgba(13, 148, 136, 0.3);
+    --theme-gold-badge-bg: rgba(217, 119, 6, 0.12);
+    --theme-gold-badge-text: #b45309;
+    --theme-gold-badge-border: rgba(217, 119, 6, 0.3);
+    --theme-text-title: #0f172a;
+    --theme-text-body: #334155;
+    --theme-text-muted: #64748b;
+    --theme-shadow-glow: rgba(217, 119, 6, 0.2);
+    --theme-ambient-glow-1: rgba(13, 148, 136, 0.12);
+    --theme-ambient-glow-2: rgba(217, 119, 6, 0.10);
+  }
+
+  body {
+    font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    background: var(--theme-bg-gradient);
+    color: var(--theme-text-body);
+    min-height: 100vh;
+  }
+
+  h1, h2, h3, h4, .font-serif {
+    font-family: 'Cinzel', 'Playfair Display', Georgia, serif;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Reusable Theme Component Classes */
+@layer components {
+  /* Unified Glassmorphism Card System */
+  .theme-card {
+    background-color: var(--theme-card-bg);
+    border: 1px solid var(--theme-card-border);
+    color: var(--theme-text-body);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 1rem;
+    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .theme-card-interactive {
+    background-color: var(--theme-card-bg);
+    border: 1px solid var(--theme-card-border);
+    color: var(--theme-text-body);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 1rem;
+    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .theme-card-interactive:hover {
+    background-color: var(--theme-card-hover);
+    border-color: var(--theme-card-border-glow);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35), 0 0 16px -2px var(--theme-shadow-glow);
+  }
+
+  .theme-card-subtle {
+    background-color: var(--theme-card-bg-subtle);
+    border: 1px solid var(--theme-card-border);
+    color: var(--theme-text-body);
+  }
+
+  /* Primary Jewel Accent Button */
+  .theme-btn-primary {
+    background: var(--theme-accent-primary-gradient);
+    color: var(--theme-accent-primary-text);
+    font-weight: 700;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 14px 0 var(--theme-shadow-glow);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .theme-btn-primary:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px 0 var(--theme-shadow-glow);
+  }
+
+  .theme-btn-primary:active {
+    transform: scale(0.98);
+  }
+
+  /* Secondary Outline Button */
+  .theme-btn-secondary {
+    background-color: var(--theme-card-bg-subtle);
+    border: 1px solid var(--theme-card-border);
+    color: var(--theme-text-body);
+    font-weight: 600;
+    border-radius: 0.75rem;
+    transition: all 0.2s ease;
+  }
+
+  .theme-btn-secondary:hover {
+    background-color: var(--theme-card-hover);
+    border-color: var(--theme-card-border-glow);
+    color: var(--theme-text-title);
+  }
+
+  /* Badges & Tags */
+  .theme-badge-teal {
+    background-color: var(--theme-accent-badge-bg);
+    color: var(--theme-accent-badge-text);
+    border: 1px solid var(--theme-accent-badge-border);
+  }
+
+  .theme-badge-gold {
+    background-color: var(--theme-gold-badge-bg);
+    color: var(--theme-gold-badge-text);
+    border: 1px solid var(--theme-gold-badge-border);
+  }
+
+  /* Inputs & Selects */
+  .theme-input {
+    background-color: var(--theme-input-bg);
+    border: 1px solid var(--theme-input-border);
+    color: var(--theme-text-title);
+    border-radius: 0.75rem;
+    transition: border-color 0.2s ease;
+  }
+
+  .theme-input:focus {
+    outline: none;
+    border-color: var(--theme-accent-secondary);
+    box-shadow: 0 0 0 2px var(--theme-shadow-glow);
+  }
+
+  .theme-input::placeholder {
+    color: var(--theme-text-muted);
+    opacity: 0.7;
+  }
+}
+
+/* Atmospheric Ambient Lighting Blooms */
+.theme-ambient-glow {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 9999px;
+  filter: blur(90px);
+  z-index: 0;
+  transition: background-color 0.5s ease;
+}
+
+/* Custom Eye-Soothing Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--theme-accent-secondary);
+  opacity: 0.5;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-accent-primary);
+}
+

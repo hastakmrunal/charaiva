@@ -1,0 +1,21 @@
+{
+  "short_name": "Charaiva",
+  "name": "Charaiva AI Tourist Guide",
+  "icons": [
+    {
+      "src": "https://images.unsplash.com/photo-1564507592333-c60657eea523?auto=format&fit=crop&w=192&q=80",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "https://images.unsplash.com/photo-1564507592333-c60657eea523?auto=format&fit=crop&w=512&q=80",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#451a03",
+  "theme_color": "#451a03",
+  "display": "standalone",
+  "orientation": "portrait"
+}

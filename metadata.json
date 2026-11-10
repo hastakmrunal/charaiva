@@ -1,0 +1,6 @@
+{
+  "name": "Charaiva - AI Multilingual Tourist Guide",
+  "description": "AI personal tour guide with photo capture and upload sight recognition, GPS-based nearby attractions with 1-line importance reasons, natural voice speech narration, and multilingual audio tours.",
+  "requestFramePermissions": ["camera", "geolocation", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

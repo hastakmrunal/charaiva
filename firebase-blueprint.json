@@ -1,0 +1,190 @@
+{
+  "entities": {
+    "UserProfileDoc": {
+      "title": "UserProfileDoc",
+      "description": "Private explorer profile storing user identity, preferred language, and traveler style.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owner.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Explorer display name.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Explorer email address.",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "preferredLanguage": {
+          "type": "string",
+          "description": "Two-letter language code from supported languages.",
+          "minLength": 2,
+          "maxLength": 16
+        },
+        "travelerType": {
+          "type": "string",
+          "enum": [
+            "heritage_enthusiast",
+            "foodie",
+            "nature_explorer",
+            "casual_tourist",
+            "photographer"
+          ],
+          "description": "Primary traveler persona used to tailor narration topics."
+        },
+        "visitedCount": {
+          "type": "integer",
+          "description": "Total number of visited sights."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of initial profile creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest profile update."
+        }
+      },
+      "required": [
+        "uid",
+        "name",
+        "email",
+        "preferredLanguage",
+        "travelerType",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "GuidePreferencesDoc": {
+      "title": "GuidePreferencesDoc",
+      "description": "Persistent app preferences synced directly with Charaiva Settings and onboarding state.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owner.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "outputMode": {
+          "type": "string",
+          "enum": ["speech", "text", "both"],
+          "description": "Preferred guide output modality."
+        },
+        "voiceGender": {
+          "type": "string",
+          "enum": ["female", "male"],
+          "description": "Preferred narration voice gender."
+        },
+        "persona": {
+          "type": "string",
+          "enum": ["warm_female", "scholarly", "adventurous", "concise"],
+          "description": "Guide storytelling persona."
+        },
+        "voicePitch": {
+          "type": "number",
+          "description": "Speech synthesis pitch multiplier."
+        },
+        "speechRate": {
+          "type": "number",
+          "description": "Speech synthesis speed multiplier."
+        },
+        "savePhotosToDeviceMemory": {
+          "type": "boolean",
+          "description": "Whether captured sight photos are stored in local device IndexedDB."
+        },
+        "locationMode": {
+          "type": "string",
+          "enum": ["gps", "manual"],
+          "description": "Automatic GPS vs manual city destination mode."
+        },
+        "manualCityName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Selected manual city name."
+        },
+        "manualStateName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Selected manual state or region."
+        },
+        "manualCountryName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Selected manual country."
+        },
+        "manualLatitude": {
+          "type": "number",
+          "description": "Latitude for selected manual city."
+        },
+        "manualLongitude": {
+          "type": "number",
+          "description": "Longitude for selected manual city."
+        },
+        "theme": {
+          "type": "string",
+          "enum": ["celestial", "sunset", "emerald", "daylight"],
+          "description": "Active color atmosphere preset."
+        },
+        "topics": {
+          "type": "object",
+          "description": "Map of 10 boolean narration topic preferences."
+        },
+        "hasSeenIntro": {
+          "type": "boolean",
+          "description": "Whether the user has viewed or skipped the App Introduction page."
+        },
+        "hasCompletedTour": {
+          "type": "boolean",
+          "description": "Whether the user has finished or skipped the Screen-by-Screen Tour."
+        },
+        "hasCompletedLoginSetup": {
+          "type": "boolean",
+          "description": "Whether initial profile and preference setup is complete."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest preference update."
+        }
+      },
+      "required": [
+        "uid",
+        "outputMode",
+        "voiceGender",
+        "persona",
+        "voicePitch",
+        "speechRate",
+        "savePhotosToDeviceMemory",
+        "locationMode",
+        "theme",
+        "topics",
+        "hasSeenIntro",
+        "hasCompletedTour",
+        "hasCompletedLoginSetup",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/private/profile": {
+      "schema": { "$ref": "#/entities/UserProfileDoc" },
+      "description": "Owner-isolated explorer PII and profile document."
+    },
+    "/users/{userId}/preferences/guide": {
+      "schema": { "$ref": "#/entities/GuidePreferencesDoc" },
+      "description": "Owner-isolated Charaiva settings and onboarding state document."
+    }
+  }
+}
