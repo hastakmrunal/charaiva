@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AppTab, Language, GuideOutputMode, ThemePreset, THEME_PRESETS } from '../types';
+import { AppTab, Language, GuideOutputMode, ThemePreset, THEME_PRESETS, UserProfile } from '../types';
 import { MeenakshiLogo } from './MeenakshiLogo';
 import { DeviceExactLocation } from '../utils/geolocation';
 import {
@@ -12,7 +12,8 @@ import {
   MapPin,
   Palette,
   Sparkles,
-  Check
+  Check,
+  User
 } from 'lucide-react';
 
 interface NavigationProps {
@@ -27,6 +28,8 @@ interface NavigationProps {
   onOpenCityGuide?: (cityName: string) => void;
   currentTheme?: ThemePreset;
   onSelectTheme?: (theme: ThemePreset) => void;
+  userProfile?: UserProfile | null;
+  isSubScreenActive?: boolean;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
@@ -36,8 +39,14 @@ export const Navigation: React.FC<NavigationProps> = ({
   deviceExactLocation,
   currentTheme = 'celestial',
   onSelectTheme,
+  userProfile,
+  isSubScreenActive = false,
 }) => {
   const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
+  const displayUserName =
+    userProfile?.name && userProfile.name.trim().length > 0
+      ? userProfile.name.trim()
+      : 'Guest Explorer';
 
   const navItems = [
     { id: 'home' as AppTab, label: 'Explore', icon: Compass },
@@ -51,7 +60,7 @@ export const Navigation: React.FC<NavigationProps> = ({
 
   return (
     <>
-      {/* Sleek, Space-Efficient Top Header with Meenakshi Temple Brand Identity */}
+      {/* Panel 1: Persistent App Brand, Quick Controls & Explorer Identity */}
       <header
         id="charaiva-top-header"
         style={{
@@ -98,7 +107,7 @@ export const Navigation: React.FC<NavigationProps> = ({
             </div>
           </div>
 
-          {/* Quick Header Actions: Theme Switcher & Language/Settings Shortcut */}
+          {/* Quick Header Actions: Theme Switcher, Language/Settings & Explorer Name */}
           <div className="flex items-center gap-1.5 relative">
             {/* Quick Theme Switcher Button */}
             {onSelectTheme && (
@@ -187,51 +196,70 @@ export const Navigation: React.FC<NavigationProps> = ({
               id="btn-header-quick-settings"
               onClick={() => setActiveTab('settings')}
               style={{
-                backgroundColor: activeTab === 'settings' ? undefined : 'var(--theme-card-bg-subtle)',
-                borderColor: activeTab === 'settings' ? 'var(--theme-accent-primary)' : 'var(--theme-card-border)',
-                color: activeTab === 'settings' ? 'var(--theme-accent-primary-text)' : 'var(--theme-text-title)',
+                backgroundColor: !isSubScreenActive && activeTab === 'settings' ? undefined : 'var(--theme-card-bg-subtle)',
+                borderColor: !isSubScreenActive && activeTab === 'settings' ? 'var(--theme-accent-primary)' : 'var(--theme-card-border)',
+                color: !isSubScreenActive && activeTab === 'settings' ? 'var(--theme-accent-primary-text)' : 'var(--theme-text-title)',
               }}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all border cursor-pointer active:scale-95 shadow-sm ${
-                activeTab === 'settings'
+                !isSubScreenActive && activeTab === 'settings'
                   ? 'theme-btn-primary'
                   : 'hover:border-[var(--theme-card-border-glow)]'
               }`}
               title="Open Settings & Preferences"
             >
               <span>{selectedLanguage.flag}</span>
-              <span className="text-[11px] font-bold">{selectedLanguage.nativeName}</span>
+              <span className="text-[11px] font-bold hidden sm:inline">{selectedLanguage.nativeName}</span>
               <Sliders className="w-3 h-3 text-[var(--theme-accent-primary)] ml-0.5" />
+            </button>
+
+            {/* Right-Side Persistent Explorer Name Chip */}
+            <button
+              id="btn-header-user-name"
+              type="button"
+              onClick={() => setActiveTab('settings')}
+              style={{
+                backgroundColor: 'var(--theme-card-bg-subtle)',
+                borderColor: 'var(--theme-card-border)',
+                color: 'var(--theme-text-title)',
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border cursor-pointer hover:border-[var(--theme-card-border-glow)] transition-all active:scale-95 shadow-sm max-w-[145px] sm:max-w-[190px]"
+              title={`Signed in as ${displayUserName} — open Profile Settings`}
+            >
+              <User className="w-3.5 h-3.5 text-[var(--theme-accent-secondary)] shrink-0" />
+              <span className="text-[11px] font-bold truncate">{displayUserName}</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Bottom Navigation Bar with Uniform, High-Contrast Jewel Tab Sizing */}
+      {/* Panel 2: Persistent Primary Screen Navigation Bar */}
       <nav
         id="charaiva-bottom-nav"
+        aria-label="Primary sections"
         style={{
           backgroundColor: 'var(--theme-nav-bg)',
           borderColor: 'var(--theme-card-border)',
         }}
-        className="shrink-0 z-40 text-[var(--theme-text-muted)] border-t backdrop-blur-xl shadow-2xl pb-[max(0.35rem,env(safe-area-inset-bottom))]"
+        className="shrink-0 z-30 text-[var(--theme-text-muted)] border-b backdrop-blur-xl shadow-md px-2"
       >
-        <div className="max-w-lg mx-auto flex items-center justify-around px-1 py-1">
+        <div className="max-w-5xl mx-auto flex items-center justify-around gap-0.5 py-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activeTab === item.id;
+            const isActive = !isSubScreenActive && activeTab === item.id;
 
             return (
               <button
                 key={item.id}
                 id={`nav-tab-${item.id}`}
+                type="button"
                 onClick={() => setActiveTab(item.id)}
                 style={{
                   backgroundColor: isActive ? 'var(--theme-card-hover)' : 'transparent',
                   borderColor: isActive ? 'var(--theme-card-border-glow)' : 'transparent',
                 }}
-                className={`flex-1 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all duration-200 cursor-pointer select-none active:scale-95 border ${
+                className={`flex-1 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all duration-200 cursor-pointer select-none active:scale-95 border min-w-0 ${
                   isActive
-                    ? 'text-[var(--theme-accent-secondary)] font-bold shadow-md'
+                    ? 'text-[var(--theme-accent-secondary)] font-bold shadow-sm'
                     : 'text-[var(--theme-text-muted)] hover:text-[var(--theme-text-title)]'
                 }`}
               >
@@ -240,14 +268,14 @@ export const Navigation: React.FC<NavigationProps> = ({
                     color: isActive ? 'var(--theme-accent-primary)' : undefined,
                   }}
                   className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform ${
-                    isActive ? 'scale-110 drop-shadow-[0_0_8px_var(--theme-shadow-glow)]' : ''
+                    isActive ? 'scale-105' : ''
                   }`}
                 />
                 <span
                   style={{
                     color: isActive ? 'var(--theme-text-title)' : undefined,
                   }}
-                  className={`text-[10px] sm:text-[10.5px] font-medium mt-0.5 tracking-tight truncate max-w-[62px] text-center ${
+                  className={`text-[10px] sm:text-[10.5px] font-medium mt-0.5 tracking-tight truncate max-w-full text-center ${
                     isActive ? 'font-bold' : ''
                   }`}
                 >

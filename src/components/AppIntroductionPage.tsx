@@ -17,7 +17,7 @@ import {
   Sparkles,
   CheckCircle2,
 } from 'lucide-react';
-import { GuideSettings, Language } from '../types';
+import { GuideSettings, Language, UserProfile } from '../types';
 import { MeenakshiLogo } from './MeenakshiLogo';
 import { speechManager } from '../utils/speech';
 import introHeroImg from '../assets/images/intro_heritage_hero_1794280981908.jpg';
@@ -26,6 +26,7 @@ import tourPillarsImg from '../assets/images/tour_vision_pillars_1794280982922.j
 interface AppIntroductionPageProps {
   selectedLanguage: Language;
   guideSettings: GuideSettings;
+  userProfile?: UserProfile | null;
   isReplayMode?: boolean;
   onOpenLanguageModal: () => void;
   onStartTour: () => void;
@@ -139,6 +140,7 @@ const OPTIONS_GUIDE = [
 export const AppIntroductionPage: React.FC<AppIntroductionPageProps> = ({
   selectedLanguage,
   guideSettings,
+  userProfile,
   isReplayMode = false,
   onOpenLanguageModal,
   onStartTour,
@@ -169,9 +171,10 @@ export const AppIntroductionPage: React.FC<AppIntroductionPageProps> = ({
     setIsSpeakingWelcome(true);
     speechManager.speak({
       text: WELCOME_SPEECH_AUDIO_SCRIPT,
+      language: 'English',
       languageCode: 'en-US',
       gender: guideSettings.voiceGender || 'female',
-      pitch: guideSettings.voicePitch || 1.08,
+      pitch: guideSettings.voicePitch || (guideSettings.voiceGender === 'male' ? 0.95 : 1.08),
       rate: speechRate,
       onStart: () => setIsSpeakingWelcome(true),
       onEnd: () => setIsSpeakingWelcome(false),
@@ -187,9 +190,10 @@ export const AppIntroductionPage: React.FC<AppIntroductionPageProps> = ({
       setIsSpeakingWelcome(true);
       speechManager.speak({
         text: WELCOME_SPEECH_AUDIO_SCRIPT,
+        language: 'English',
         languageCode: 'en-US',
         gender: guideSettings.voiceGender || 'female',
-        pitch: guideSettings.voicePitch || 1.08,
+        pitch: guideSettings.voicePitch || (guideSettings.voiceGender === 'male' ? 0.95 : 1.08),
         rate: nextRate,
         onStart: () => setIsSpeakingWelcome(true),
         onEnd: () => setIsSpeakingWelcome(false),
@@ -207,41 +211,26 @@ export const AppIntroductionPage: React.FC<AppIntroductionPageProps> = ({
   return (
     <div
       id="app-introduction-page"
-      className="relative z-10 flex-1 h-full overflow-y-auto overflow-x-hidden select-none"
+      className="relative z-10 flex-1 min-h-0 overflow-y-auto overflow-x-hidden select-none"
     >
-      {/* Top Sticky Introduction Bar */}
-      <header
+      {/* Compact Sub-View Context & Skip Action Strip */}
+      <div
         style={{
-          backgroundColor: 'var(--theme-header-bg)',
+          backgroundColor: 'var(--theme-card-bg)',
           borderColor: 'var(--theme-card-border)',
         }}
-        className="sticky top-0 z-30 border-b backdrop-blur-xl px-4 py-2.5"
+        className="sticky top-0 z-20 border-b backdrop-blur-xl px-4 py-2"
       >
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div
-              className="w-9 h-9 rounded-xl p-0.5 shadow-md flex items-center justify-center shrink-0"
-              style={{ background: 'var(--theme-accent-primary-gradient)' }}
-            >
-              <div
-                className="w-full h-full rounded-[10px] flex items-center justify-center p-0.5"
-                style={{ backgroundColor: 'var(--theme-card-bg-subtle)' }}
-              >
-                <MeenakshiLogo className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-serif font-bold text-base text-[var(--theme-text-title)] tracking-tight">
-                  Charaiva
-                </span>
-                <span className="text-xs text-[var(--theme-text-muted)] hidden sm:inline">
-                  · Introduction & Overview
-                </span>
-              </div>
-              <p className="text-[11px] text-[var(--theme-text-muted)] truncate">
-                Multilingual Heritage & Vision Guide
-              </p>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-serif font-bold text-[var(--theme-text-title)]">
+                App Introduction &amp; Workflow
+              </span>
+              <span className="text-[var(--theme-text-muted)] hidden sm:inline">·</span>
+              <span className="text-[11px] text-[var(--theme-text-muted)] hidden sm:inline truncate">
+                Overview of features &amp; real-time guide
+              </span>
             </div>
           </div>
 
@@ -254,7 +243,7 @@ export const AppIntroductionPage: React.FC<AppIntroductionPageProps> = ({
                 borderColor: 'var(--theme-card-border)',
                 color: 'var(--theme-text-body)',
               }}
-              className="min-h-[44px] px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 cursor-pointer hover:border-[var(--theme-card-border-glow)] transition-colors whitespace-nowrap shrink-0"
+              className="min-h-[38px] px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 cursor-pointer hover:border-[var(--theme-card-border-glow)] transition-colors whitespace-nowrap shrink-0"
               title="Choose narration language"
             >
               <span>{selectedLanguage.flag}</span>
@@ -271,14 +260,14 @@ export const AppIntroductionPage: React.FC<AppIntroductionPageProps> = ({
                 borderColor: 'var(--theme-card-border)',
                 color: 'var(--theme-text-title)',
               }}
-              className="min-h-[44px] px-3.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:border-[var(--theme-accent-primary)] transition-all active:scale-95 whitespace-nowrap shrink-0"
+              className="min-h-[38px] px-3.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:border-[var(--theme-accent-primary)] transition-all active:scale-95 whitespace-nowrap shrink-0"
             >
-              <span>{isReplayMode ? 'Back to App' : 'Skip Intro'}</span>
+              <span>{isReplayMode ? 'Back to Explore' : 'Skip Intro'}</span>
               <ArrowRight className="w-3.5 h-3.5 text-[var(--theme-accent-primary)]" />
             </button>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Content Body */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-8 pb-12">
@@ -502,7 +491,7 @@ export const AppIntroductionPage: React.FC<AppIntroductionPageProps> = ({
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent pointer-events-none" />
                 <div className="absolute bottom-3 left-3 right-3 text-white space-y-0.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-300">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--theme-accent-primary)]">
                     Real-Time Multimodal Vision
                   </p>
                   <p className="text-xs font-medium text-white/90">

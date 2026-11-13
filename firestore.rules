@@ -134,6 +134,81 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidJournalEntry(data, userId, journalId) {
+      return data.keys().hasAll([
+          'journalId',
+          'userId',
+          'placeId',
+          'placeName',
+          'city',
+          'country',
+          'locationName',
+          'category',
+          'visitDate',
+          'notes',
+          'guideSummary',
+          'visitedConfirmed',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'journalId',
+          'userId',
+          'placeId',
+          'placeName',
+          'city',
+          'country',
+          'locationName',
+          'category',
+          'visitDate',
+          'notes',
+          'guideSummary',
+          'narration',
+          'keyFacts',
+          'tags',
+          'language',
+          'imageUrl',
+          'visitedConfirmed',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.journalId is string
+        && isValidId(data.journalId)
+        && data.journalId == journalId
+        && data.userId is string
+        && isValidId(data.userId)
+        && data.userId == request.auth.uid
+        && data.userId == userId
+        && data.placeId is string
+        && data.placeId.size() <= 160
+        && data.placeName is string
+        && data.placeName.size() >= 1
+        && data.placeName.size() <= 160
+        && data.city is string
+        && data.city.size() <= 100
+        && data.country is string
+        && data.country.size() <= 100
+        && data.locationName is string
+        && data.locationName.size() <= 200
+        && data.category in ['monument', 'temple', 'fort', 'museum', 'landscape', 'food', 'plant', 'object', 'building', 'animal']
+        && data.visitDate is string
+        && data.visitDate.size() >= 8
+        && data.visitDate.size() <= 20
+        && data.visitDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.notes is string
+        && data.notes.size() <= 2000
+        && data.guideSummary is string
+        && data.guideSummary.size() <= 1500
+        && (!('narration' in data) || (data.narration is string && data.narration.size() <= 6000))
+        && (!('language' in data) || (data.language is string && data.language.size() <= 60))
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 600))
+        && (!('keyFacts' in data) || (data.keyFacts is list && data.keyFacts.size() <= 12 && (data.keyFacts.size() == 0 || data.keyFacts[0] is string)))
+        && (!('tags' in data) || (data.tags is list && data.tags.size() <= 12 && (data.tags.size() == 0 || data.tags[0] is string)))
+        && data.visitedConfirmed is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // 4. Owner-Isolated User Subcollections
     match /users/{userId}/private/profile {
       allow get: if isValidId(userId) && isVerifiedOwner(userId);
@@ -193,6 +268,52 @@ service cloud.firestore {
           'updatedAt'
         ]);
       allow delete: if isValidId(userId) && isVerifiedOwner(userId);
+    }
+
+    match /users/{userId}/journalEntries/{journalId} {
+      allow get: if isValidId(userId)
+        && isValidId(journalId)
+        && isVerifiedOwner(userId)
+        && existing().userId == request.auth.uid;
+      allow list: if isValidId(userId)
+        && isVerifiedOwner(userId)
+        && resource.data.userId == request.auth.uid;
+      allow create: if isValidId(userId)
+        && isValidId(journalId)
+        && isVerifiedOwner(userId)
+        && isValidJournalEntry(incoming(), userId, journalId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isValidId(journalId)
+        && isVerifiedOwner(userId)
+        && isValidJournalEntry(incoming(), userId, journalId)
+        && incoming().journalId == existing().journalId
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'placeId',
+          'placeName',
+          'city',
+          'country',
+          'locationName',
+          'category',
+          'visitDate',
+          'notes',
+          'guideSummary',
+          'narration',
+          'keyFacts',
+          'tags',
+          'language',
+          'imageUrl',
+          'visitedConfirmed',
+          'updatedAt'
+        ]);
+      allow delete: if isValidId(userId)
+        && isValidId(journalId)
+        && isVerifiedOwner(userId)
+        && existing().userId == request.auth.uid;
     }
   }
 }

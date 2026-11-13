@@ -3,6 +3,7 @@ import { RecognitionResult, Language, GuideOutputMode, SupplementaryImage } from
 import { speechManager } from '../utils/speech';
 import { DeepDiveModal } from './DeepDiveModal';
 import { PlaceCardImage } from './PlaceCardImage';
+import { WordByWordText } from './WordByWordText';
 import {
   Volume2,
   VolumeX,
@@ -30,7 +31,7 @@ interface ExplanationViewProps {
   selectedLanguage: Language;
   onBack: () => void;
   onOpenChatWithQuestion: (question: string) => void;
-  onSaveToHistory: (landmark: RecognitionResult) => void;
+  onSaveToHistory: (landmark: RecognitionResult) => Promise<void> | void;
   isSavedInHistory: boolean;
   onOpenLanguageModal?: () => void;
   outputMode: GuideOutputMode;
@@ -58,6 +59,8 @@ export const ExplanationView: React.FC<ExplanationViewProps> = ({
   const [activeTab, setActiveTab] = useState<'narration' | 'contextImages' | 'facts' | 'architecture' | 'questions' | 'ocr'>('narration');
   const [selectedLightboxImage, setSelectedLightboxImage] = useState<SupplementaryImage | null>(null);
   const [isDeepDiveOpen, setIsDeepDiveOpen] = useState(false);
+  const [isSavingJournal, setIsSavingJournal] = useState(false);
+  const [saveJournalError, setSaveJournalError] = useState<string | null>(null);
 
   // Keep active landmark synced when prop changes
   useEffect(() => {
@@ -133,9 +136,10 @@ export const ExplanationView: React.FC<ExplanationViewProps> = ({
   const handlePlaySpeech = () => {
     speechManager.speak({
       text: activeLandmark.narration,
+      language: selectedLanguage.name,
       languageCode: selectedLanguage.speechCode,
       rate: guideSettings?.speechRate || speechRate,
-      pitch: guideSettings?.voicePitch || 1.08,
+      pitch: guideSettings?.voicePitch,
       gender: guideSettings?.voiceGender || 'female',
       onStart: () => setIsPlaying(true),
       onEnd: () => setIsPlaying(false),
@@ -158,10 +162,14 @@ export const ExplanationView: React.FC<ExplanationViewProps> = ({
       speechManager.stop();
       speechManager.speak({
         text: activeLandmark.narration,
+        language: selectedLanguage.name,
         languageCode: selectedLanguage.speechCode,
         rate: newRate,
+        pitch: guideSettings?.voicePitch,
+        gender: guideSettings?.voiceGender || 'female',
         onStart: () => setIsPlaying(true),
         onEnd: () => setIsPlaying(false),
+        onError: () => setIsPlaying(false),
       });
     }
   };
@@ -184,14 +192,32 @@ export const ExplanationView: React.FC<ExplanationViewProps> = ({
         </button>
 
         <div className="flex items-center gap-2">
+          {saveJournalError && (
+            <span className="text-[10px] text-rose-400 font-medium truncate max-w-[160px]">
+              {saveJournalError}
+            </span>
+          )}
           <button
-            onClick={() => onSaveToHistory(activeLandmark)}
+            type="button"
+            disabled={isSavingJournal || isSavedInHistory}
+            onClick={async () => {
+              if (isSavingJournal || isSavedInHistory) return;
+              setIsSavingJournal(true);
+              setSaveJournalError(null);
+              try {
+                await onSaveToHistory(activeLandmark);
+              } catch (err: any) {
+                setSaveJournalError(err?.message || 'Save failed');
+              } finally {
+                setIsSavingJournal(false);
+              }
+            }}
             style={{
               backgroundColor: isSavedInHistory ? 'var(--theme-card-bg-subtle)' : undefined,
               borderColor: isSavedInHistory ? 'var(--theme-card-border-glow)' : undefined,
               color: isSavedInHistory ? 'var(--theme-accent-secondary)' : undefined,
             }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border active:scale-95 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border active:scale-95 disabled:cursor-default ${
               isSavedInHistory ? 'border' : 'theme-btn-primary'
             }`}
           >
@@ -203,7 +229,7 @@ export const ExplanationView: React.FC<ExplanationViewProps> = ({
             ) : (
               <>
                 <Bookmark className="w-3.5 h-3.5" />
-                <span>Save to Journal</span>
+                <span>{isSavingJournal ? 'Saving...' : 'Save to Journal'}</span>
               </>
             )}
           </button>
@@ -450,7 +476,7 @@ export const ExplanationView: React.FC<ExplanationViewProps> = ({
                 {selectedLanguage.nativeName} Audio Narration
               </h4>
               <p className="text-xs sm:text-sm text-[var(--theme-text-body)] leading-relaxed whitespace-pre-line font-sans">
-                {activeLandmark.narration}
+                <WordByWordText text={activeLandmark.narration} isStreaming={activeLandmark.isStreaming} />
               </p>
 
               {/* Want to Know More / Deep Dive In-Depth Button */}
@@ -466,7 +492,7 @@ export const ExplanationView: React.FC<ExplanationViewProps> = ({
                 >
                   <BookOpen className="w-4 h-4" />
                   <span>Want to know more about this topic? Discover In-Depth Details</span>
-                  <Sparkles className="w-4 h-4 animate-bounce" />
+                  <Sparkles className="w-4 h-4" />
                 </button>
               </div>
             </div>

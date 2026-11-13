@@ -6,7 +6,7 @@
       "name": "react-example",
       "dependencies": {
         "@firebase/eslint-plugin-security-rules": "^0.0.2",
-        "@google/genai": "^2.4.0",
+        "@google/genai": "^3.0.0",
         "@tailwindcss/vite": "^4.1.14",
         "@types/leaflet": "^1.9.22",
         "@vis.gl/react-google-maps": "^1.9.0",
@@ -235,7 +235,7 @@
 
     "@firebase/webchannel-wrapper": ["@firebase/webchannel-wrapper@1.0.7", "", {}, "sha512-phBFwieDLvkZGYN9CE9ZFNEIoBVksprzsnCzQejCmCHtgwCXReeuRpoEGN9C4EbhONztv8NRV1tau6Rb9pONwQ=="],
 
-    "@google/genai": ["@google/genai@2.15.0", "", { "dependencies": { "google-auth-library": "^10.3.0", "p-retry": "^4.6.2", "protobufjs": "^7.5.4", "ws": "^8.18.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.25.2" }, "optionalPeers": ["@modelcontextprotocol/sdk"] }, "sha512-Q41TvqwBQ9NcmWdh6qxY5qrpg+0FaVHD7febQoH007pykxzco4ohScBUP4BBBy+Q8j5D8euIBSRIBDfWuNVCKA=="],
+    "@google/genai": ["@google/genai@3.0.0", "", { "dependencies": { "google-auth-library": "^10.3.0", "p-retry": "^4.6.2", "protobufjs": "^7.6.5", "ws": "^8.21.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.25.2" }, "optionalPeers": ["@modelcontextprotocol/sdk"] }, "sha512-0o2uBXPWBNUu0jWg2Id5iBtCnsd7lnxKPQfnijKvNublG/zj40CToERvz/eyfNjzzXt2kwuvxpouLUrRCZ2WUQ=="],
 
     "@googlemaps/js-api-loader": ["@googlemaps/js-api-loader@2.1.1", "", { "dependencies": { "@types/google.maps": "^3.53.1" } }, "sha512-yUpAwksbHrlZIWD49JmveNSfBG4oAK0AwMknfSaPMnP5N7UT8oFRVCqwjGb1XQovi//7KLbPQKZpbofiLGzpDw=="],
 

@@ -96,6 +96,37 @@ export interface RecognitionResult {
   batchStatus?: BatchStreamingStatus;
   isStreaming?: boolean;
   audioBase64?: string;
+  journalId?: string;
+  placeId?: string;
+  city?: string;
+  country?: string;
+  visitDate?: string;
+  notes?: string;
+  visitedConfirmed?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TravelJournalEntry {
+  journalId: string;
+  userId: string;
+  placeId: string;
+  placeName: string;
+  city: string;
+  country: string;
+  locationName: string;
+  category: RecognitionResult['category'];
+  visitDate: string;
+  notes: string;
+  guideSummary: string;
+  narration?: string;
+  keyFacts?: string[];
+  tags?: string[];
+  language?: string;
+  imageUrl?: string;
+  visitedConfirmed: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface NearbyLandmark {
@@ -179,38 +210,38 @@ export interface ThemeOption {
 export const THEME_PRESETS: ThemeOption[] = [
   {
     id: 'celestial',
-    name: 'Celestial Heritage',
-    subtitle: 'Midnight Sapphire · Saffron Gold · Oasis Teal',
-    primaryColor: '#F59E0B',
-    secondaryColor: '#14B8A6',
-    bgPreview: 'from-[#0f172a] via-[#090d16] to-[#04070e]',
+    name: 'Celestial Twilight',
+    subtitle: 'Midnight Slate · Muted Gold · Serene Teal',
+    primaryColor: '#C99A4E',
+    secondaryColor: '#2A9D8F',
+    bgPreview: 'from-[#111b2e] via-[#0b1220] to-[#060912]',
     iconName: 'Sparkles',
   },
   {
     id: 'sunset',
-    name: 'Sunset Terracotta',
-    subtitle: 'Twilight Amethyst · Rose Terracotta · Honey',
-    primaryColor: '#F43F5E',
-    secondaryColor: '#FB923C',
-    bgPreview: 'from-[#2a1122] via-[#130a17] to-[#0a050d]',
+    name: 'Dusk Terracotta',
+    subtitle: 'Deep Plum Slate · Muted Rose · Sandstone',
+    primaryColor: '#B86566',
+    secondaryColor: '#C98B5B',
+    bgPreview: 'from-[#241421] via-[#150c15] to-[#0b060b]',
     iconName: 'Sunset',
   },
   {
     id: 'emerald',
-    name: 'Emerald Sanctuary',
-    subtitle: 'Deep Rainforest · Radiant Jade · Champagne',
-    primaryColor: '#10B981',
-    secondaryColor: '#EAB308',
-    bgPreview: 'from-[#0d2922] via-[#061713] to-[#030d0a]',
+    name: 'Botanical Pine',
+    subtitle: 'Deep Forest Slate · Calm Jade · Muted Brass',
+    primaryColor: '#2C8C6F',
+    secondaryColor: '#B59A4B',
+    bgPreview: 'from-[#10251f] via-[#091713] to-[#050d0b]',
     iconName: 'Leaf',
   },
   {
     id: 'daylight',
-    name: 'Royal Daylight',
-    subtitle: 'Sunlit Alabaster · Sandstone · Imperial Saffron',
-    primaryColor: '#D97706',
-    secondaryColor: '#0D9488',
-    bgPreview: 'from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0]',
+    name: 'Warm Stone Daylight',
+    subtitle: 'Soft Linen · Heritage Bronze · Slate Teal',
+    primaryColor: '#8C5A2B',
+    secondaryColor: '#1F7A74',
+    bgPreview: 'from-[#f7f6f2] via-[#efeeea] to-[#e5e4df]',
     iconName: 'Sun',
   },
 ];

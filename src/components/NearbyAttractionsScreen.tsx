@@ -4,9 +4,12 @@ import { speechManager } from '../utils/speech';
 import { DeviceExactLocation, getDeviceExactLocation, openNativeMapsNavigation } from '../utils/geolocation';
 import { DeepDiveModal } from './DeepDiveModal';
 import { PlaceCardImage } from './PlaceCardImage';
+import { WordByWordText } from './WordByWordText';
+import { VERIFIED_GROUND_TRUTH_POIS } from '../data/verifiedGroundTruthIndex';
 import {
   Compass,
   MapPin,
+  ArrowLeft,
   Sparkles,
   Volume2,
   Pause,
@@ -55,6 +58,7 @@ export interface NearbyDiscoveredSpot {
   latitude?: number;
   longitude?: number;
   source?: string;
+  types?: string[];
   placeId?: string;
   hasRealPhoto?: boolean;
   photoUnavailable?: boolean;
@@ -84,8 +88,67 @@ interface NearbyAttractionsScreenProps {
   onOpenChatWithQuestion: (question: string) => void;
   onNavigateToPhotoGuide: () => void;
   onOpenCityGuide?: (cityName: string) => void;
+  onBackToHome?: () => void;
   guideSettings?: GuideSettings;
   outputMode: GuideOutputMode;
+}
+
+function haversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function buildInitialGroundTruthSpots(lat: number, lng: number, cityName: string): NearbyDiscoveredSpot[] {
+  const cityLower = (cityName || '').toLowerCase();
+  const sorted = [...VERIFIED_GROUND_TRUTH_POIS]
+    .map((poi) => {
+      const dist = haversineDistanceKm(lat, lng, poi.lat, poi.lng);
+      const isCityMatch = poi.city.toLowerCase().includes(cityLower) || cityLower.includes(poi.city.toLowerCase());
+      return { poi, dist, isCityMatch };
+    })
+    .sort((a, b) => {
+      if (a.isCityMatch && !b.isCityMatch) return -1;
+      if (!a.isCityMatch && b.isCityMatch) return 1;
+      return a.dist - b.dist;
+    })
+    .slice(0, 16);
+
+  return sorted.map(({ poi, dist }) => {
+    const roundedDist = Math.round(dist * 10) / 10;
+    const walkMin = Math.max(3, Math.round(dist * 12));
+    const driveMin = Math.max(2, Math.round(dist * 2.5));
+    const walkOrDriveTime = dist <= 1.5 ? `${walkMin} min walk` : `${driveMin} min drive`;
+
+    return {
+      id: `gt_${poi.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+      name: poi.name,
+      category: poi.category,
+      oneLineImportance: poi.oneLineSignificance,
+      description: poi.oneLineSignificance,
+      estimatedDistanceKm: roundedDist,
+      walkOrDriveTime,
+      bestTimeToVisit: 'Morning or Evening',
+      addressOrLocality: `${poi.locality}, ${poi.city}`,
+      keyHighlights: poi.highlights,
+      imageUrl: poi.imageUrl,
+      rating: poi.rating,
+      reviewCount: poi.reviewCount,
+      googleMapsUri: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(poi.name + ' ' + poi.city)}`,
+      latitude: poi.lat,
+      longitude: poi.lng,
+      source: 'verified_spatial_radar',
+      hasRealPhoto: true,
+    };
+  });
 }
 
 export const NearbyAttractionsScreen: React.FC<NearbyAttractionsScreenProps> = ({
@@ -98,6 +161,7 @@ export const NearbyAttractionsScreen: React.FC<NearbyAttractionsScreenProps> = (
   onOpenChatWithQuestion,
   onNavigateToPhotoGuide,
   onOpenCityGuide,
+  onBackToHome,
   guideSettings,
   outputMode,
 }) => {
@@ -142,9 +206,13 @@ export const NearbyAttractionsScreen: React.FC<NearbyAttractionsScreenProps> = (
   const [sortBy, setSortBy] = useState<'nearest' | 'relevant' | 'rating'>('nearest');
 
   // Real Spots fetched from Google Places / Spatial Ground Truth + Gemini narration
-  const [spots, setSpots] = useState<NearbyDiscoveredSpot[]>([]);
+  // Pre-seed instantly with verified ground truth so side-by-side cards render at 0ms
+  const [spots, setSpots] = useState<NearbyDiscoveredSpot[]>(() =>
+    buildInitialGroundTruthSpots(currentCoords.latitude, currentCoords.longitude, currentCoords.cityName)
+  );
   const [areaOverview, setAreaOverview] = useState<string>('');
-  const [isLoadingSpots, setIsLoadingSpots] = useState<boolean>(true);
+  const [isLoadingSpots, setIsLoadingSpots] = useState<boolean>(false);
+  const [isSyncingLive, setIsSyncingLive] = useState<boolean>(true);
 
   // Audio Playback state
   const [activePlayingId, setActivePlayingId] = useState<string | null>(null);
@@ -170,7 +238,7 @@ export const NearbyAttractionsScreen: React.FC<NearbyAttractionsScreenProps> = (
   useEffect(() => {
     let isMounted = true;
     async function fetchSpots() {
-      setIsLoadingSpots(true);
+      setIsSyncingLive(true);
       try {
         const res = await fetch('/api/discover-nearby-spots', {
           method: 'POST',
@@ -188,7 +256,7 @@ export const NearbyAttractionsScreen: React.FC<NearbyAttractionsScreenProps> = (
 
         if (res.ok) {
           const data = await res.json();
-          if (isMounted && data.success && data.spots) {
+          if (isMounted && data.success && data.spots && data.spots.length > 0) {
             setSpots(data.spots);
             if (data.areaOverview) setAreaOverview(data.areaOverview);
           }
@@ -196,7 +264,10 @@ export const NearbyAttractionsScreen: React.FC<NearbyAttractionsScreenProps> = (
       } catch (err) {
         console.warn('Failed to load real spots:', err);
       } finally {
-        if (isMounted) setIsLoadingSpots(false);
+        if (isMounted) {
+          setIsLoadingSpots(false);
+          setIsSyncingLive(false);
+        }
       }
     }
 
@@ -249,9 +320,10 @@ export const NearbyAttractionsScreen: React.FC<NearbyAttractionsScreenProps> = (
 
     speechManager.speak({
       text: narrationText,
+      language: selectedLanguage.name,
       languageCode: selectedLanguage.speechCode,
       rate: guideSettings?.speechRate || 1.0,
-      pitch: guideSettings?.voicePitch || 1.08,
+      pitch: guideSettings?.voicePitch || (guideSettings?.voiceGender === 'male' ? 0.95 : 1.08),
       gender: guideSettings?.voiceGender || 'female',
       onStart: () => setActivePlayingId(spot.id),
       onEnd: () => setActivePlayingId(null),
@@ -450,27 +522,46 @@ export const NearbyAttractionsScreen: React.FC<NearbyAttractionsScreenProps> = (
         }}
         className="shrink-0 p-3 rounded-2xl border shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 backdrop-blur-xl"
       >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-xs sm:text-sm font-serif font-bold text-[var(--theme-text-title)] truncate">
-              {currentCoords.locationName}
-            </h2>
+        <div className="min-w-0 flex-1 flex items-start gap-2.5">
+          {onBackToHome && (
+            <button
+              id="btn-nearby-back-home"
+              type="button"
+              onClick={onBackToHome}
+              style={{
+                backgroundColor: 'var(--theme-card-bg-subtle)',
+                borderColor: 'var(--theme-card-border)',
+                color: 'var(--theme-text-title)',
+              }}
+              className="p-2 rounded-xl border cursor-pointer hover:border-[var(--theme-card-border-glow)] transition-all active:scale-95 shrink-0 mt-0.5"
+              title="Back to Home"
+              aria-label="Back to Home"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xs sm:text-sm font-serif font-bold text-[var(--theme-text-title)] truncate">
+                {currentCoords.locationName}
+              </h2>
 
-            {onOpenCityGuide && (
-              <button
-                id="btn-nearby-explore-city"
-                onClick={() => onOpenCityGuide(currentCoords.cityName)}
-                className="px-2.5 py-0.5 rounded-full theme-badge-gold text-[10.5px] font-bold flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-sm"
-                title={`Explore brief and in-depth guide for ${currentCoords.cityName}`}
-              >
-                <Sparkles className="w-3 h-3 text-[var(--theme-accent-primary)]" />
-                <span>Explore City</span>
-              </button>
-            )}
+              {onOpenCityGuide && (
+                <button
+                  id="btn-nearby-explore-city"
+                  onClick={() => onOpenCityGuide(currentCoords.cityName)}
+                  className="px-2.5 py-0.5 rounded-full theme-badge-gold text-[10.5px] font-bold flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-sm"
+                  title={`Explore brief and in-depth guide for ${currentCoords.cityName}`}
+                >
+                  <Sparkles className="w-3 h-3 text-[var(--theme-accent-primary)]" />
+                  <span>Explore City</span>
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-[var(--theme-text-muted)] line-clamp-1 mt-0.5">
+              {areaOverview || `Discovered ${spots.length} verified attractions, temples, and local spots in ${currentCoords.cityName}.`}
+            </p>
           </div>
-          <p className="text-[11px] text-[var(--theme-text-muted)] line-clamp-1 mt-0.5">
-            {areaOverview || `Discovered ${spots.length} verified attractions, temples, and local spots in ${currentCoords.cityName}.`}
-          </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -607,12 +698,51 @@ export const NearbyAttractionsScreen: React.FC<NearbyAttractionsScreenProps> = (
 
       {/* Main Discovered Spots List */}
       <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2.5">
-        {isLoadingSpots ? (
-          <div className="py-16 flex flex-col items-center justify-center text-center space-y-3">
-            <div className="w-10 h-10 border-3 border-[var(--theme-accent-primary)] border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs sm:text-sm text-[var(--theme-accent-primary)] font-medium animate-pulse">
-              Querying verified spatial radar near {currentCoords.locationName}...
-            </p>
+        {isSyncingLive && (
+          <div
+            style={{
+              backgroundColor: 'var(--theme-card-bg-subtle)',
+              borderColor: 'var(--theme-card-border)',
+              color: 'var(--theme-text-body)',
+            }}
+            className="flex items-center justify-between p-2 rounded-xl border text-xs shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-[var(--theme-accent-secondary)] shrink-0" />
+              <span className="font-medium">
+                Syncing live radar data side-by-side...
+              </span>
+            </div>
+            <span className="text-[10px] text-[var(--theme-accent-secondary)] font-mono">
+              {filteredSpots.length} attractions ready
+            </span>
+          </div>
+        )}
+
+        {filteredSpots.length === 0 && isLoadingSpots ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-pulse">
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                style={{
+                  backgroundColor: 'var(--theme-card-bg)',
+                  borderColor: 'var(--theme-card-border)',
+                }}
+                className="rounded-2xl border p-3.5 space-y-3"
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    style={{ backgroundColor: 'var(--theme-card-bg-subtle)' }}
+                    className="w-16 h-16 rounded-xl"
+                  />
+                  <div className="flex-1 space-y-2">
+                    <div style={{ backgroundColor: 'var(--theme-card-bg-subtle)' }} className="h-4 rounded w-3/4" />
+                    <div style={{ backgroundColor: 'var(--theme-card-bg-subtle)' }} className="h-3 rounded w-1/2" />
+                  </div>
+                </div>
+                <div style={{ backgroundColor: 'var(--theme-card-bg-subtle)' }} className="h-3 rounded w-full" />
+              </div>
+            ))}
           </div>
         ) : filteredSpots.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-3">
@@ -879,9 +1009,13 @@ export const NearbyAttractionsScreen: React.FC<NearbyAttractionsScreenProps> = (
               <h4 className="text-xs font-bold text-[var(--theme-accent-primary)] uppercase tracking-wider">
                 Overview & History:
               </h4>
-              <p className="text-xs text-[var(--theme-text-body)] leading-relaxed whitespace-pre-line">
-                {selectedDetailSpot.description}
-              </p>
+              <WordByWordText
+                text={selectedDetailSpot.description}
+                wordsPerTick={2}
+                intervalMs={26}
+                as="p"
+                className="text-xs text-[var(--theme-text-body)] leading-relaxed whitespace-pre-line"
+              />
             </div>
 
             {selectedDetailSpot.keyHighlights && selectedDetailSpot.keyHighlights.length > 0 && (

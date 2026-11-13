@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Language, GuideSettings, GuideOutputMode } from '../types';
 import { speechManager } from '../utils/speech';
+import { WordByWordText } from './WordByWordText';
 import {
   Sparkles,
   Volume2,
-  VolumeX,
-  Play,
   Pause,
   X,
   CheckCircle2,
@@ -15,8 +14,7 @@ import {
   MessageSquare,
   Flame,
   Key,
-  Layers,
-  ChevronRight
+  Layers
 } from 'lucide-react';
 
 interface DeepDiveData {
@@ -48,7 +46,6 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
   currentNarration,
   selectedLanguage,
   guideSettings,
-  outputMode = 'both',
   onClose,
   onOpenChatWithQuestion,
 }) => {
@@ -106,9 +103,10 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
     } else if (data?.deepDiveNarration) {
       speechManager.speak({
         text: data.deepDiveNarration,
+        language: selectedLanguage.name,
         languageCode: selectedLanguage.speechCode,
         rate: guideSettings?.speechRate || 1.0,
-        pitch: guideSettings?.voicePitch || 1.08,
+        pitch: guideSettings?.voicePitch,
         gender: guideSettings?.voiceGender || 'female',
         onStart: () => setIsPlaying(true),
         onEnd: () => setIsPlaying(false),
@@ -124,25 +122,36 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
     >
       <div
         id="deep-dive-modal-content"
-        className="w-full max-w-2xl max-h-[90vh] bg-gradient-to-b from-[#221812] to-[#140e0a] rounded-3xl border border-amber-600/70 shadow-2xl flex flex-col overflow-hidden text-amber-50"
+        style={{
+          backgroundColor: 'var(--theme-card-bg)',
+          borderColor: 'var(--theme-card-border-glow)',
+          color: 'var(--theme-text-title)',
+        }}
+        className="w-full max-w-2xl max-h-[90vh] rounded-3xl border shadow-2xl flex flex-col overflow-hidden"
       >
         {/* Modal Header */}
-        <div className="shrink-0 p-4 border-b border-amber-800/60 bg-[#1c140e] flex items-center justify-between gap-3">
+        <div
+          style={{
+            backgroundColor: 'var(--theme-card-bg-subtle)',
+            borderColor: 'var(--theme-card-border)',
+          }}
+          className="shrink-0 p-4 border-b flex items-center justify-between gap-3"
+        >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold text-[10px] uppercase tracking-wider border border-amber-500/40 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-amber-400" />
+              <span className="px-2 py-0.5 rounded-full theme-badge-gold font-bold text-[10px] uppercase tracking-wider flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
                 Deep In-Depth Exploration
               </span>
-              <span className="text-[10px] text-amber-400/80 font-medium">
+              <span className="text-[10px] text-[var(--theme-accent-secondary)] font-medium">
                 {selectedLanguage.nativeName}
               </span>
             </div>
-            <h3 className="text-base sm:text-lg font-serif font-bold text-amber-100 truncate mt-0.5">
+            <h3 className="text-base sm:text-lg font-serif font-bold text-[var(--theme-text-title)] truncate mt-0.5">
               {title}
             </h3>
             {locationName && (
-              <p className="text-xs text-amber-300/70 truncate">{locationName}</p>
+              <p className="text-xs text-[var(--theme-text-muted)] truncate">{locationName}</p>
             )}
           </div>
 
@@ -150,10 +159,19 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
             {data && (
               <button
                 onClick={handleToggleSpeech}
+                style={
+                  isPlaying
+                    ? undefined
+                    : {
+                        backgroundColor: 'var(--theme-card-bg)',
+                        borderColor: 'var(--theme-card-border)',
+                        color: 'var(--theme-accent-primary)',
+                      }
+                }
                 className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
                   isPlaying
-                    ? 'bg-amber-500 text-amber-950 border-amber-400 animate-pulse'
-                    : 'bg-amber-950 text-amber-300 border-amber-700 hover:bg-amber-900'
+                    ? 'theme-btn-primary animate-pulse border-transparent'
+                    : 'hover:border-[var(--theme-card-border-glow)]'
                 }`}
                 title={isPlaying ? 'Pause Audio' : 'Listen to Deep Dive Audio'}
               >
@@ -167,7 +185,12 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
                 speechManager.stop();
                 onClose();
               }}
-              className="p-2 rounded-xl bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-700/60 cursor-pointer"
+              style={{
+                backgroundColor: 'var(--theme-card-bg)',
+                borderColor: 'var(--theme-card-border)',
+                color: 'var(--theme-text-muted)',
+              }}
+              className="p-2 rounded-xl border hover:text-[var(--theme-text-title)] cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -176,66 +199,37 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
 
         {/* Navigation Tabs */}
         {data && (
-          <div className="shrink-0 flex items-center gap-1 px-3 pt-2 bg-[#18110b] border-b border-amber-800/50 overflow-x-auto scrollbar-none">
-            <button
-              onClick={() => setActiveTab('narration')}
-              className={`pb-2 px-3 text-xs font-bold border-b-2 whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 ${
-                activeTab === 'narration'
-                  ? 'border-amber-400 text-amber-200'
-                  : 'border-transparent text-amber-400/60 hover:text-amber-200'
-              }`}
-            >
-              <Volume2 className="w-3.5 h-3.5" />
-              <span>Deep Story</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('secrets')}
-              className={`pb-2 px-3 text-xs font-bold border-b-2 whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 ${
-                activeTab === 'secrets'
-                  ? 'border-amber-400 text-amber-200'
-                  : 'border-transparent text-amber-400/60 hover:text-amber-200'
-              }`}
-            >
-              <Key className="w-3.5 h-3.5" />
-              <span>Hidden Secrets ({data.secretFacts?.length || 0})</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('architecture')}
-              className={`pb-2 px-3 text-xs font-bold border-b-2 whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 ${
-                activeTab === 'architecture'
-                  ? 'border-amber-400 text-amber-200'
-                  : 'border-transparent text-amber-400/60 hover:text-amber-200'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Architecture</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('mysteries')}
-              className={`pb-2 px-3 text-xs font-bold border-b-2 whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 ${
-                activeTab === 'mysteries'
-                  ? 'border-amber-400 text-amber-200'
-                  : 'border-transparent text-amber-400/60 hover:text-amber-200'
-              }`}
-            >
-              <HelpCircle className="w-3.5 h-3.5" />
-              <span>Mysteries</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('tips')}
-              className={`pb-2 px-3 text-xs font-bold border-b-2 whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 ${
-                activeTab === 'tips'
-                  ? 'border-amber-400 text-amber-200'
-                  : 'border-transparent text-amber-400/60 hover:text-amber-200'
-              }`}
-            >
-              <Compass className="w-3.5 h-3.5" />
-              <span>Insider Tips</span>
-            </button>
+          <div
+            style={{
+              backgroundColor: 'var(--theme-card-bg-subtle)',
+              borderColor: 'var(--theme-card-border)',
+            }}
+            className="shrink-0 flex items-center gap-1 px-3 pt-2 border-b overflow-x-auto scrollbar-none"
+          >
+            {[
+              { id: 'narration' as const, label: 'Deep Story', icon: Volume2 },
+              { id: 'secrets' as const, label: `Hidden Secrets (${data.secretFacts?.length || 0})`, icon: Key },
+              { id: 'architecture' as const, label: 'Architecture', icon: Layers },
+              { id: 'mysteries' as const, label: 'Mysteries', icon: HelpCircle },
+              { id: 'tips' as const, label: 'Insider Tips', icon: Compass },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`pb-2 px-3 text-xs font-bold border-b-2 whitespace-nowrap cursor-pointer transition-all flex items-center gap-1.5 ${
+                    active
+                      ? 'border-[var(--theme-accent-primary)] text-[var(--theme-text-title)]'
+                      : 'border-transparent text-[var(--theme-text-muted)] hover:text-[var(--theme-text-title)]'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -243,19 +237,19 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
         <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
           {loading && (
             <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
-              <div className="w-10 h-10 border-3 border-amber-400 border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-amber-200 font-medium animate-pulse">
-                Uncovering untold legends, secrets, and historical records about {title}...
+              <div className="w-10 h-10 border-3 border-[var(--theme-accent-primary)] border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm text-[var(--theme-text-muted)] font-medium animate-pulse">
+                Uncovering legends, secrets, and historical records about {title}...
               </p>
             </div>
           )}
 
           {error && (
-            <div className="p-4 rounded-2xl bg-red-950/50 border border-red-800 text-center space-y-2">
-              <p className="text-xs text-red-200 font-medium">{error}</p>
+            <div className="p-4 rounded-2xl bg-rose-950/50 border border-rose-700/50 text-center space-y-2">
+              <p className="text-xs text-rose-200 font-medium">{error}</p>
               <button
                 onClick={() => onClose()}
-                className="px-3 py-1.5 rounded-xl bg-amber-800 text-amber-100 text-xs font-bold"
+                className="px-3 py-1.5 rounded-xl theme-btn-secondary text-xs font-bold cursor-pointer"
               >
                 Close
               </button>
@@ -266,24 +260,37 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
             <>
               {activeTab === 'narration' && (
                 <div className="space-y-3">
-                  <div className="p-4 rounded-2xl bg-amber-950/60 border border-amber-700/60 leading-relaxed text-xs sm:text-sm text-amber-100 font-sans shadow-md space-y-2.5 whitespace-pre-line">
-                    {data.deepDiveNarration}
+                  <div
+                    style={{
+                      backgroundColor: 'var(--theme-card-bg-subtle)',
+                      borderColor: 'var(--theme-card-border)',
+                    }}
+                    className="p-4 rounded-2xl border leading-relaxed text-xs sm:text-sm text-[var(--theme-text-body)] font-sans shadow-sm whitespace-pre-line"
+                  >
+                    <WordByWordText text={data.deepDiveNarration} />
                   </div>
 
                   {data.historicalTimeline && data.historicalTimeline.length > 0 && (
-                    <div className="p-3.5 rounded-2xl bg-[#1c140e] border border-amber-800/60 space-y-2">
-                      <h4 className="text-xs font-bold text-amber-300 flex items-center gap-1.5 uppercase tracking-wider">
-                        <Clock className="w-3.5 h-3.5 text-amber-400" />
+                    <div
+                      style={{
+                        backgroundColor: 'var(--theme-card-bg-subtle)',
+                        borderColor: 'var(--theme-card-border)',
+                      }}
+                      className="p-3.5 rounded-2xl border space-y-2"
+                    >
+                      <h4 className="text-xs font-bold text-[var(--theme-accent-primary)] flex items-center gap-1.5 uppercase tracking-wider">
+                        <Clock className="w-3.5 h-3.5" />
                         Historical Timeline Milestones
                       </h4>
                       <div className="space-y-1.5">
                         {data.historicalTimeline.map((item, idx) => (
                           <div
                             key={idx}
-                            className="flex items-start gap-2.5 text-xs text-amber-100 border-l-2 border-amber-500/50 pl-2.5 py-0.5"
+                            style={{ borderColor: 'var(--theme-accent-secondary)' }}
+                            className="flex items-start gap-2.5 text-xs text-[var(--theme-text-body)] border-l-2 pl-2.5 py-0.5"
                           >
-                            <span className="font-bold text-amber-400 shrink-0">{item.era}:</span>
-                            <span className="text-amber-200/90">{item.event}</span>
+                            <span className="font-bold text-[var(--theme-accent-primary)] shrink-0">{item.era}:</span>
+                            <span>{item.event}</span>
                           </div>
                         ))}
                       </div>
@@ -294,17 +301,21 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
 
               {activeTab === 'secrets' && (
                 <div className="space-y-2.5">
-                  <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Key className="w-3.5 h-3.5 text-amber-400" />
-                    Lesser-Known Secrets & Folklore:
+                  <h4 className="text-xs font-bold text-[var(--theme-accent-primary)] uppercase tracking-wider flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5" />
+                    Lesser-Known Secrets &amp; Folklore:
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     {data.secretFacts.map((fact, idx) => (
                       <div
                         key={idx}
-                        className="p-3 rounded-2xl bg-[#1c140e] border border-amber-800/60 text-xs text-amber-100 space-y-1 shadow-sm flex items-start gap-2"
+                        style={{
+                          backgroundColor: 'var(--theme-card-bg-subtle)',
+                          borderColor: 'var(--theme-card-border)',
+                        }}
+                        className="p-3 rounded-2xl border text-xs text-[var(--theme-text-body)] shadow-sm flex items-start gap-2"
                       >
-                        <Flame className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+                        <Flame className="w-4 h-4 text-[var(--theme-accent-primary)] shrink-0 mt-0.5" />
                         <span className="leading-relaxed">{fact}</span>
                       </div>
                     ))}
@@ -314,17 +325,21 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
 
               {activeTab === 'architecture' && (
                 <div className="space-y-2.5">
-                  <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-amber-400" />
-                    Architectural & Craft Secrets to Spot:
+                  <h4 className="text-xs font-bold text-[var(--theme-accent-primary)] uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    Architectural &amp; Craft Secrets to Spot:
                   </h4>
                   <div className="space-y-2">
                     {data.architecturalSecrets.map((arch, idx) => (
                       <div
                         key={idx}
-                        className="p-3 rounded-2xl bg-[#1c140e] border border-amber-800/60 text-xs text-amber-100 flex items-start gap-2.5"
+                        style={{
+                          backgroundColor: 'var(--theme-card-bg-subtle)',
+                          borderColor: 'var(--theme-card-border)',
+                        }}
+                        className="p-3 rounded-2xl border text-xs text-[var(--theme-text-body)] flex items-start gap-2.5"
                       >
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                        <CheckCircle2 className="w-4 h-4 text-[var(--theme-accent-secondary)] shrink-0 mt-0.5" />
                         <span className="leading-relaxed">{arch}</span>
                       </div>
                     ))}
@@ -334,15 +349,19 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
 
               {activeTab === 'mysteries' && (
                 <div className="space-y-2.5">
-                  <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
-                    Unsolved Mysteries & Debates:
+                  <h4 className="text-xs font-bold text-[var(--theme-accent-primary)] uppercase tracking-wider flex items-center gap-1.5">
+                    <HelpCircle className="w-3.5 h-3.5" />
+                    Unsolved Mysteries &amp; Debates:
                   </h4>
                   <div className="space-y-2">
                     {data.unsolvedMysteries.map((mystery, idx) => (
                       <div
                         key={idx}
-                        className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-800/60 text-xs text-amber-100 space-y-1"
+                        style={{
+                          backgroundColor: 'var(--theme-card-bg-subtle)',
+                          borderColor: 'var(--theme-card-border)',
+                        }}
+                        className="p-3.5 rounded-2xl border text-xs text-[var(--theme-text-body)] space-y-1"
                       >
                         <p className="leading-relaxed">{mystery}</p>
                       </div>
@@ -353,17 +372,21 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
 
               {activeTab === 'tips' && (
                 <div className="space-y-2.5">
-                  <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Compass className="w-3.5 h-3.5 text-amber-400" />
+                  <h4 className="text-xs font-bold text-[var(--theme-accent-primary)] uppercase tracking-wider flex items-center gap-1.5">
+                    <Compass className="w-3.5 h-3.5" />
                     Insider Visitor Pro Tips:
                   </h4>
                   <div className="space-y-2">
                     {data.visitorProTips.map((tip, idx) => (
                       <div
                         key={idx}
-                        className="p-3 rounded-2xl bg-[#1c140e] border border-amber-800/60 text-xs text-amber-100 flex items-start gap-2.5"
+                        style={{
+                          backgroundColor: 'var(--theme-card-bg-subtle)',
+                          borderColor: 'var(--theme-card-border)',
+                        }}
+                        className="p-3 rounded-2xl border text-xs text-[var(--theme-text-body)] flex items-start gap-2.5"
                       >
-                        <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <CheckCircle2 className="w-4 h-4 text-[var(--theme-accent-primary)] shrink-0 mt-0.5" />
                         <span className="leading-relaxed">{tip}</span>
                       </div>
                     ))}
@@ -375,16 +398,22 @@ export const DeepDiveModal: React.FC<DeepDiveModalProps> = ({
         </div>
 
         {/* Modal Footer: Ask AI Question */}
-        <div className="shrink-0 p-3 bg-[#18110b] border-t border-amber-800/60 flex items-center justify-between gap-2">
+        <div
+          style={{
+            backgroundColor: 'var(--theme-card-bg-subtle)',
+            borderColor: 'var(--theme-card-border)',
+          }}
+          className="shrink-0 p-3 border-t flex items-center justify-between gap-2"
+        >
           <button
             onClick={() => {
               speechManager.stop();
               onOpenChatWithQuestion(`Tell me more fascinating secrets and questions about ${title}`);
               onClose();
             }}
-            className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-900 to-amber-800 hover:brightness-110 text-amber-100 border border-amber-600/70 text-xs font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-98"
+            className="flex-1 py-2.5 px-3 rounded-xl theme-btn-primary text-xs font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-[0.99]"
           >
-            <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
+            <MessageSquare className="w-3.5 h-3.5" />
             <span>Ask AI Guide a Question About This</span>
           </button>
         </div>

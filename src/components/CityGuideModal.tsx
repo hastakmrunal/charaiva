@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Language, GuideSettings } from '../types';
 import { speechManager } from '../utils/speech';
 import { PlaceCardImage } from './PlaceCardImage';
+import { WordByWordText } from './WordByWordText';
 import {
   X,
   Sparkles,
@@ -137,9 +138,10 @@ export const CityGuideModal: React.FC<CityGuideModalProps> = ({
 
     speechManager.speak({
       text: audioScript,
+      language: selectedLanguage.name,
       languageCode: selectedLanguage.speechCode,
       rate: guideSettings?.speechRate || 1.0,
-      pitch: guideSettings?.voicePitch || 1.08,
+      pitch: guideSettings?.voicePitch || (guideSettings?.voiceGender === 'male' ? 0.95 : 1.08),
       gender: guideSettings?.voiceGender || 'female',
       onStart: () => setIsPlayingAudio(true),
       onEnd: () => setIsPlayingAudio(false),
@@ -293,9 +295,13 @@ export const CityGuideModal: React.FC<CityGuideModalProps> = ({
                   <span>Brief City Overview</span>
                 </div>
 
-                <p className="text-xs sm:text-sm text-[var(--theme-text-body)] leading-relaxed whitespace-pre-line">
-                  {cityData.briefOverview}
-                </p>
+                <WordByWordText
+                  text={cityData.briefOverview}
+                  wordsPerTick={2}
+                  intervalMs={28}
+                  as="p"
+                  className="text-xs sm:text-sm text-[var(--theme-text-body)] leading-relaxed whitespace-pre-line"
+                />
 
                 {/* Quick Highlights Grid */}
                 {cityData.quickHighlights && cityData.quickHighlights.length > 0 && (
@@ -400,7 +406,7 @@ export const CityGuideModal: React.FC<CityGuideModalProps> = ({
                   >
                     <BookOpen className="w-4 h-4" />
                     <span>Explore More About {cityData.cityName} (In-Depth Guide)</span>
-                    <ChevronDown className="w-4 h-4 animate-bounce" />
+                    <ChevronDown className="w-4 h-4" />
                   </button>
                 ) : (
                   <div className="space-y-4 animate-fadeIn">

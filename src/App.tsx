@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import {
   AppTab,
+  ChatMessage,
   Language,
   RecognitionResult,
   LocationCoords,
@@ -11,13 +12,14 @@ import {
   UserProfile,
   OnboardingState,
   SavedLocationPreference,
+  TravelJournalEntry,
 } from './types';
 import { SUPPORTED_LANGUAGES, getLanguageByCode } from './data/languages';
 import { Navigation } from './components/Navigation';
 import { HomeScreen } from './components/HomeScreen';
 import { CameraScreen } from './components/CameraScreen';
 import { ExplanationView } from './components/ExplanationView';
-import { AIChatScreen } from './components/AIChatScreen';
+import { AIChatScreen, AiGuideJournalSavePayload } from './components/AIChatScreen';
 import { MapView } from './components/MapView';
 import { HistoryScreen } from './components/HistoryScreen';
 import { GuideSettingsScreen } from './components/GuideSettingsScreen';
@@ -29,6 +31,7 @@ import { AppIntroductionPage } from './components/AppIntroductionPage';
 import { AppTourOverlay } from './components/AppTourOverlay';
 import { LoginOnboardingScreen, LoginCompletionPayload } from './components/LoginOnboardingScreen';
 import { DeviceExactLocation, getDeviceExactLocation, DEFAULT_FALLBACK_LOCATION } from './utils/geolocation';
+import { speechManager } from './utils/speech';
 import { auth, googleProvider } from './firebase';
 import {
   STORAGE_KEYS,
@@ -45,9 +48,45 @@ import {
   saveUserToFirestore,
   getPresetForTravelerType,
 } from './utils/userPersistence';
+import {
+  clearAllUserJournalEntries,
+  clearGuestJournal,
+  createUserJournalEntry,
+  deleteUserJournalEntry,
+  generateSafeJournalId,
+  getTodayDateStr,
+  journalEntryToRecognitionResult,
+  loadGuestJournal,
+  loadUserJournalEntries,
+  recognitionResultToJournalPayload,
+  saveGuestJournal,
+  saveUidJournalCache,
+  sortJournalEntriesNewestFirst,
+  updateUserJournalEntry,
+} from './utils/journalPersistence';
+
+const VALID_TABS: ReadonlyArray<AppTab> = [
+  'home',
+  'camera',
+  'chat',
+  'map',
+  'history',
+  'settings',
+  'nearby',
+  'city',
+];
+
+function parseTabFromHash(): AppTab {
+  if (typeof window === 'undefined') return 'home';
+  const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0].trim();
+  if (VALID_TABS.includes(raw as AppTab)) {
+    return raw as AppTab;
+  }
+  return 'home';
+}
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<AppTab>('home');
+  const [activeTab, setActiveTab] = useState<AppTab>(() => parseTabFromHash());
   const [selectedLanguage, setSelectedLanguage] = useState<Language>(() =>
     getLanguageByCode(loadLocalLanguageCode())
   );
@@ -103,8 +142,26 @@ export default function App() {
   );
 
   const [currentExplanation, setCurrentExplanation] = useState<RecognitionResult | null>(null);
-  const [visitedHistory, setVisitedHistory] = useState<RecognitionResult[]>([]);
   const [chatQuestion, setChatQuestion] = useState<string | undefined>(undefined);
+  const [chatLandmarkContext, setChatLandmarkContext] = useState<RecognitionResult | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const appRootRef = useRef<HTMLDivElement | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
+  const activeTabRef = useRef<AppTab>(activeTab);
+
+  // User-Scoped Persistent Travel Journal State
+  const [journalEntries, setJournalEntries] = useState<TravelJournalEntry[]>([]);
+  const [isLoadingJournal, setIsLoadingJournal] = useState<boolean>(false);
+  const [journalFromCache, setJournalFromCache] = useState<boolean>(false);
+  const [journalError, setJournalError] = useState<string | null>(null);
+  const activeJournalUidRef = useRef<string | null>(null);
+  const scanCreatePromiseMapRef = useRef<Map<string, Promise<TravelJournalEntry | null>>>(new Map());
+  const savingKeysRef = useRef<Set<string>>(new Set());
+
+  const visitedHistory = useMemo(
+    () => journalEntries.map(journalEntryToRecognitionResult),
+    [journalEntries]
+  );
 
   // Exact Device Location (Restores saved manual destination if manual mode was saved)
   const [deviceExactLocation, setDeviceExactLocation] = useState<DeviceExactLocation | null>(() => {
@@ -271,13 +328,132 @@ export default function App() {
     }
   }, []);
 
-  // Rehydrate returning Firebase Auth users automatically on startup
+  const resetViewportScroll = useCallback(() => {
+    try {
+      window.scrollTo(0, 0);
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+      const rootEl = document.getElementById('root');
+      if (rootEl) rootEl.scrollTop = 0;
+      if (appRootRef.current) appRootRef.current.scrollTop = 0;
+      if (mainRef.current) mainRef.current.scrollTop = 0;
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
+    activeTabRef.current = activeTab;
+    resetViewportScroll();
+    const rafId = window.requestAnimationFrame(resetViewportScroll);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [activeTab, currentExplanation, resetViewportScroll]);
+
+  // Synchronize URL hash and browser/PWA history for reliable back navigation & refresh recovery
+  useEffect(() => {
+    const initial = parseTabFromHash();
+    if (window.location.hash !== `#${initial}`) {
+      try {
+        window.history.replaceState({ tab: initial }, '', `#${initial}`);
+      } catch {
+        // ignore
+      }
+    }
+
+    const handlePopOrHash = () => {
+      const targetTab = parseTabFromHash();
+      speechManager.stop();
+      activeTabRef.current = targetTab;
+      setActiveTab(targetTab);
+      if (targetTab !== 'chat') {
+        setChatQuestion(undefined);
+        setChatLandmarkContext(null);
+      }
+      if (targetTab === 'home') {
+        setCurrentExplanation(null);
+      }
+      resetViewportScroll();
+    };
+
+    window.addEventListener('popstate', handlePopOrHash);
+    window.addEventListener('hashchange', handlePopOrHash);
+    return () => {
+      window.removeEventListener('popstate', handlePopOrHash);
+      window.removeEventListener('hashchange', handlePopOrHash);
+    };
+  }, [resetViewportScroll]);
+
+  const navigateToTab = useCallback(
+    (tab: AppTab, options?: { replace?: boolean }) => {
+      const targetHash = `#${tab}`;
+      const prevTab = activeTabRef.current;
+      try {
+        if (options?.replace) {
+          window.history.replaceState({ tab }, '', targetHash);
+        } else if (prevTab !== tab || window.location.hash !== targetHash) {
+          window.history.pushState({ tab }, '', targetHash);
+        }
+      } catch {
+        // ignore history errors
+      }
+      activeTabRef.current = tab;
+      setActiveTab(tab);
+      resetViewportScroll();
+    },
+    [resetViewportScroll]
+  );
+
+  const loadJournalForSession = useCallback(async (uid?: string | null) => {
+    if (uid && auth.currentUser?.uid === uid) {
+      if (activeJournalUidRef.current !== uid) {
+        setJournalEntries([]);
+      }
+      activeJournalUidRef.current = uid;
+      setIsLoadingJournal(true);
+      setJournalError(null);
+      const res = await loadUserJournalEntries(uid);
+      if (activeJournalUidRef.current !== uid) return;
+      setJournalEntries(res.entries);
+      setJournalFromCache(res.fromCache);
+      setJournalError(res.error || null);
+      setIsLoadingJournal(false);
+    } else {
+      activeJournalUidRef.current = null;
+      const guestEntries = loadGuestJournal();
+      setJournalEntries(guestEntries);
+      setJournalFromCache(false);
+      setJournalError(null);
+      setIsLoadingJournal(false);
+    }
+  }, []);
+
+  // Rehydrate returning Firebase Auth users & their Travel Journal automatically on startup
+  useEffect(() => {
+    const localProf = loadLocalUserProfile();
+    if (!localProf?.uid) {
+      loadJournalForSession(null);
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (!firebaseUser || isInteractiveSignInRef.current) return;
+      if (isInteractiveSignInRef.current) return;
+
+      if (!firebaseUser) {
+        // Ensure stale cloud journal entries are never shown when signed out
+        const currentLocal = loadLocalUserProfile();
+        if (currentLocal?.authMethod === 'google') {
+          setUserProfile(null);
+          saveLocalUserProfile(null);
+        }
+        loadJournalForSession(null);
+        return;
+      }
 
       try {
-        const cloud = await loadUserFromFirestore(firebaseUser.uid);
+        const [cloud] = await Promise.all([
+          loadUserFromFirestore(firebaseUser.uid),
+          loadJournalForSession(firebaseUser.uid),
+        ]);
+
         if (cloud.profile && cloud.onboardingState?.hasCompletedLoginSetup && cloud.guideSettings) {
           const restoredLang = getLanguageByCode(cloud.profile.preferredLanguage);
           const nextOnboarding: OnboardingState = {
@@ -351,7 +527,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [loadJournalForSession]);
 
   // Open City Guide Modal for any given city
   const handleOpenCityGuide = (cityName: string, stateName?: string, countryName: string = 'India') => {
@@ -422,38 +598,303 @@ export default function App() {
     }
   };
 
-  const handleScanComplete = (result: RecognitionResult) => {
-    setCurrentExplanation(result);
+  const persistEntriesSnapshot = useCallback((nextEntries: TravelJournalEntry[], uid: string | null) => {
+    const sorted = sortJournalEntriesNewestFirst(nextEntries);
+    if (uid) {
+      saveUidJournalCache(uid, sorted);
+    } else {
+      saveGuestJournal(sorted);
+    }
+    return sorted;
+  }, []);
 
-    const isNewSight = !visitedHistory.some(
-      (item) => item.id === result.id || item.title === result.title
-    );
-    setVisitedHistory((prev) => {
-      if (!prev.some((item) => item.id === result.id || item.title === result.title)) {
-        return [result, ...prev];
+  const syncVisitedCount = useCallback(
+    (delta: number) => {
+      setUserProfile((prev) => {
+        if (!prev) return prev;
+        const nextCount = Math.max(0, (prev.visitedCount || 0) + delta);
+        const updatedProfile: UserProfile = {
+          ...prev,
+          visitedCount: nextCount,
+          updatedAt: new Date().toISOString(),
+        };
+        saveLocalUserProfile(updatedProfile);
+        if (auth.currentUser?.uid && updatedProfile.authMethod === 'google') {
+          saveUserToFirestore({
+            uid: auth.currentUser.uid,
+            profile: updatedProfile,
+            guideSettings,
+            locationPref,
+            theme: currentTheme,
+            onboardingState,
+          }).catch(() => {});
+        }
+        return updatedProfile;
+      });
+    },
+    [currentTheme, guideSettings, locationPref, onboardingState]
+  );
+
+  const createJournalRecord = useCallback(
+    async (
+      payload: Omit<TravelJournalEntry, 'journalId' | 'userId' | 'createdAt' | 'updatedAt'>,
+      explicitJournalId?: string
+    ): Promise<TravelJournalEntry> => {
+      const verifiedUid = auth.currentUser?.uid || null;
+      if (verifiedUid) {
+        const created = await createUserJournalEntry(verifiedUid, {
+          ...payload,
+          journalId: explicitJournalId,
+        });
+        if (activeJournalUidRef.current !== verifiedUid) {
+          return created;
+        }
+        setJournalEntries((prev) => {
+          const withoutDup = prev.filter((e) => e.journalId !== created.journalId);
+          return persistEntriesSnapshot([created, ...withoutDup], verifiedUid);
+        });
+        syncVisitedCount(1);
+        return created;
       }
-      return prev;
-    });
 
-    if (isNewSight && userProfile) {
-      const updatedProfile: UserProfile = {
-        ...userProfile,
-        visitedCount: (userProfile.visitedCount || 0) + 1,
+      // Guest local temporary storage
+      const nowIso = new Date().toISOString();
+      const journalId = explicitJournalId || generateSafeJournalId(payload.placeName);
+      const guestEntry: TravelJournalEntry = {
+        ...payload,
+        journalId,
+        userId: 'guest',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+      setJournalEntries((prev) => {
+        const withoutDup = prev.filter((e) => e.journalId !== guestEntry.journalId);
+        return persistEntriesSnapshot([guestEntry, ...withoutDup], null);
+      });
+      syncVisitedCount(1);
+      return guestEntry;
+    },
+    [persistEntriesSnapshot, syncVisitedCount]
+  );
+
+  const updateJournalRecord = useCallback(
+    async (journalId: string, updates: Partial<TravelJournalEntry>) => {
+      const existing = journalEntries.find((e) => e.journalId === journalId);
+      if (!existing) throw new Error('Journal entry not found.');
+
+      const verifiedUid = auth.currentUser?.uid || null;
+      if (verifiedUid && existing.userId === verifiedUid) {
+        const updated = await updateUserJournalEntry(verifiedUid, journalId, updates, existing);
+        if (activeJournalUidRef.current !== verifiedUid) return;
+        setJournalEntries((prev) =>
+          persistEntriesSnapshot(
+            prev.map((e) => (e.journalId === journalId ? updated : e)),
+            verifiedUid
+          )
+        );
+        return;
+      }
+
+      const updatedGuest: TravelJournalEntry = {
+        ...existing,
+        ...updates,
+        journalId,
+        userId: 'guest',
         updatedAt: new Date().toISOString(),
       };
-      setUserProfile(updatedProfile);
-      saveLocalUserProfile(updatedProfile);
-      syncCloudIfAuthenticated({ profile: updatedProfile });
+      setJournalEntries((prev) =>
+        persistEntriesSnapshot(
+          prev.map((e) => (e.journalId === journalId ? updatedGuest : e)),
+          null
+        )
+      );
+    },
+    [journalEntries, persistEntriesSnapshot]
+  );
+
+  const deleteJournalRecord = useCallback(
+    async (journalId: string) => {
+      const verifiedUid = auth.currentUser?.uid || null;
+      if (verifiedUid) {
+        await deleteUserJournalEntry(verifiedUid, journalId);
+        setJournalEntries((prev) =>
+          persistEntriesSnapshot(
+            prev.filter((e) => e.journalId !== journalId),
+            verifiedUid
+          )
+        );
+        syncVisitedCount(-1);
+        return;
+      }
+
+      setJournalEntries((prev) =>
+        persistEntriesSnapshot(
+          prev.filter((e) => e.journalId !== journalId),
+          null
+        )
+      );
+      syncVisitedCount(-1);
+    },
+    [persistEntriesSnapshot, syncVisitedCount]
+  );
+
+  // Deduplicates progressive scan callbacks (Batch 2 -> Batch 3 -> onComplete) per scan ID
+  const handleScanComplete = useCallback(
+    (result: RecognitionResult) => {
+      setCurrentExplanation(result);
+
+      if (!result.title || result.title.trim().length === 0) return;
+      const scanKey = result.id || `scan_${result.title}`;
+      const existingPromise = scanCreatePromiseMapRef.current.get(scanKey);
+
+      if (!existingPromise) {
+        const payload = recognitionResultToJournalPayload(result, { visitedConfirmed: true });
+        const createPromise = createJournalRecord(payload)
+          .catch((err) => {
+            console.warn('Journal auto-log skipped or failed:', err);
+            scanCreatePromiseMapRef.current.delete(scanKey);
+            return null;
+          });
+        scanCreatePromiseMapRef.current.set(scanKey, createPromise);
+      } else {
+        existingPromise.then((createdEntry) => {
+          if (!createdEntry) return;
+          const payload = recognitionResultToJournalPayload(result, {
+            visitedConfirmed: createdEntry.visitedConfirmed,
+          });
+          const verifiedUid = auth.currentUser?.uid || null;
+          if (verifiedUid && createdEntry.userId === verifiedUid) {
+            updateUserJournalEntry(verifiedUid, createdEntry.journalId, payload, createdEntry)
+              .then((updated) => {
+                if (activeJournalUidRef.current !== verifiedUid) return;
+                setJournalEntries((prev) =>
+                  persistEntriesSnapshot(
+                    prev.map((e) => (e.journalId === createdEntry.journalId ? updated : e)),
+                    verifiedUid
+                  )
+                );
+              })
+              .catch(() => {});
+          } else if (!verifiedUid && createdEntry.userId === 'guest') {
+            setJournalEntries((prev) =>
+              persistEntriesSnapshot(
+                prev.map((e) =>
+                  e.journalId === createdEntry.journalId
+                    ? { ...e, ...payload, updatedAt: new Date().toISOString() }
+                    : e
+                ),
+                null
+              )
+            );
+          }
+        });
+      }
+    },
+    [createJournalRecord, persistEntriesSnapshot]
+  );
+
+  const handleSaveLandmarkToJournal = async (landmark: RecognitionResult) => {
+    const lockKey = `landmark:${landmark.id || landmark.title}`;
+    if (savingKeysRef.current.has(lockKey)) return;
+
+    const alreadySaved = journalEntries.some(
+      (entry) =>
+        entry.journalId === landmark.id ||
+        (entry.placeName.toLowerCase() === landmark.title.toLowerCase() &&
+          entry.visitDate === getTodayDateStr())
+    );
+    if (alreadySaved) return;
+
+    savingKeysRef.current.add(lockKey);
+    try {
+      const payload = recognitionResultToJournalPayload(landmark, { visitedConfirmed: true });
+      await createJournalRecord(payload);
+      showToast(`Saved "${landmark.title}" to your Travel Journal.`);
+    } finally {
+      savingKeysRef.current.delete(lockKey);
     }
   };
 
-  const handleClearMemory = () => {
-    setVisitedHistory([]);
+  const handleSaveFromAiGuide = async (data: AiGuideJournalSavePayload) => {
+    const lockKey = `aiguide:${data.placeName.toLowerCase()}:${data.visitDate}`;
+    if (savingKeysRef.current.has(lockKey)) return;
+    savingKeysRef.current.add(lockKey);
+    try {
+      const base = data.landmark
+        ? recognitionResultToJournalPayload(data.landmark, {
+            notes: data.notes,
+            visitDate: data.visitDate,
+            city: data.city,
+            country: data.country,
+            visitedConfirmed: true,
+          })
+        : recognitionResultToJournalPayload(
+            {
+              id: generateSafeJournalId(data.placeName),
+              title: data.placeName,
+              category: 'monument',
+              confidence: 1,
+              locationName: [data.city, data.country].filter(Boolean).join(', '),
+              city: data.city,
+              country: data.country,
+              summary: data.guideSummary || `Explored ${data.placeName} with Charaiva AI Guide.`,
+              narration: data.guideSummary || `Explored ${data.placeName} with Charaiva AI Guide.`,
+              keyFacts: [],
+              tags: [],
+              language: selectedLanguage.name,
+              timestamp: new Date().toISOString(),
+            },
+            {
+              notes: data.notes,
+              visitDate: data.visitDate,
+              city: data.city,
+              country: data.country,
+              visitedConfirmed: true,
+            }
+          );
+
+      await createJournalRecord({
+        ...base,
+        placeName: data.placeName,
+        notes: data.notes,
+        guideSummary: data.guideSummary || base.guideSummary,
+        visitDate: data.visitDate,
+      });
+      showToast(`Saved "${data.placeName}" to your Travel Journal.`);
+    } finally {
+      savingKeysRef.current.delete(lockKey);
+    }
   };
 
+  const handleClearMemory = async () => {
+    const verifiedUid = auth.currentUser?.uid || null;
+    if (verifiedUid) {
+      const ids = journalEntries
+        .filter((e) => e.userId === verifiedUid)
+        .map((e) => e.journalId);
+      await clearAllUserJournalEntries(verifiedUid, ids);
+      saveUidJournalCache(verifiedUid, []);
+    } else {
+      clearGuestJournal();
+    }
+    scanCreatePromiseMapRef.current.clear();
+    setJournalEntries([]);
+    showToast('Travel Journal cleared.');
+  };
+
+  const navigateToHome = useCallback(() => {
+    speechManager.stop();
+    setReplayMode('none');
+    setChatQuestion(undefined);
+    setChatLandmarkContext(null);
+    setCurrentExplanation(null);
+    navigateToTab('home', { replace: true });
+  }, [navigateToTab]);
+
   const handleOpenChatWithQuestion = (q: string) => {
+    setChatLandmarkContext(currentExplanation);
     setChatQuestion(q);
-    setActiveTab('chat');
+    navigateToTab('chat');
   };
 
   // Onboarding Orchestration Callbacks
@@ -500,7 +941,7 @@ export default function App() {
 
     if (replayMode === 'login' && onboardingState.hasCompletedLoginSetup) {
       setReplayMode('none');
-      setActiveTab('home');
+      navigateToTab('home', { replace: true });
       return;
     }
 
@@ -526,7 +967,7 @@ export default function App() {
       skippedDirectly: !onboardingState.hasCompletedLoginSetup,
     });
     setReplayMode('none');
-    setActiveTab('home');
+    navigateToTab('home', { replace: true });
   };
 
   const handleCompleteTour = () => {
@@ -558,7 +999,7 @@ export default function App() {
     setCurrentTheme(payload.theme);
     setOnboardingState(nextOnboarding);
     setReplayMode('none');
-    setActiveTab('home');
+    navigateToTab('home', { replace: true });
 
     // Sync to localStorage
     saveLocalUserProfile(payload.profile);
@@ -606,25 +1047,29 @@ export default function App() {
       refreshDeviceLocation();
     }
 
-    // Write to Firestore if authenticated via Google
-    if (
-      payload.profile.uid &&
-      auth.currentUser?.uid === payload.profile.uid &&
-      !payload.isExistingCloudRestore
-    ) {
-      await saveUserToFirestore({
-        uid: payload.profile.uid,
-        profile: payload.profile,
-        guideSettings: payload.guideSettings,
-        locationPref: payload.locationPref,
-        theme: payload.theme,
-        onboardingState: nextOnboarding,
-      });
+    scanCreatePromiseMapRef.current.clear();
+    savingKeysRef.current.clear();
+
+    // Write profile to Firestore if authenticated via Google, and restore that user's Travel Journal
+    if (payload.profile.uid && auth.currentUser?.uid === payload.profile.uid) {
+      if (!payload.isExistingCloudRestore) {
+        await saveUserToFirestore({
+          uid: payload.profile.uid,
+          profile: payload.profile,
+          guideSettings: payload.guideSettings,
+          locationPref: payload.locationPref,
+          theme: payload.theme,
+          onboardingState: nextOnboarding,
+        });
+      }
+      await loadJournalForSession(payload.profile.uid);
+    } else {
+      await loadJournalForSession(null);
     }
 
     showToast(
       payload.isExistingCloudRestore
-        ? `Welcome back, ${payload.profile.name}! Settings restored from cloud.`
+        ? `Welcome back, ${payload.profile.name}! Settings & Travel Journal restored.`
         : `Preferences synced to Settings for ${payload.profile.name}.`
     );
   };
@@ -724,7 +1169,10 @@ export default function App() {
         onboardingState: completedOnboarding,
       });
 
-      showToast('Connected with Google Cloud — Settings backed up.');
+      scanCreatePromiseMapRef.current.clear();
+      await loadJournalForSession(user.uid);
+
+      showToast('Connected with Google Cloud — Settings & Journal synced.');
       return { restored: false };
     } catch (err: any) {
       const code = err?.code || '';
@@ -738,15 +1186,27 @@ export default function App() {
   };
 
   const handleLogoutAndResetOnboarding = async () => {
+    speechManager.stop();
     try {
       await signOut(auth);
     } catch {
       // ignore if already signed out
     }
+    activeJournalUidRef.current = null;
+    scanCreatePromiseMapRef.current.clear();
+    savingKeysRef.current.clear();
+    clearGuestJournal();
+    setJournalEntries([]);
+    setJournalFromCache(false);
+    setJournalError(null);
     setUserProfile(null);
     saveLocalUserProfile(null);
     setReplayMode('none');
     setCurrentExplanation(null);
+    setChatQuestion(undefined);
+    setChatLandmarkContext(null);
+    setChatMessages([]);
+    navigateToTab('home', { replace: true });
     updateOnboardingState({
       hasSeenIntro: true,
       hasCompletedTour: true,
@@ -756,19 +1216,54 @@ export default function App() {
     showToast('Signed out. Ready for a new explorer profile.');
   };
 
-  // Determine which view fills #charaiva-app-root
+  // Determine which view fills the viewport below the two persistent header/nav panels
   const showIntroScreen = replayMode === 'intro' || !onboardingState.hasSeenIntro;
   const showTourScreen = !showIntroScreen && (replayMode === 'tour' || !onboardingState.hasCompletedTour);
   const showLoginScreen =
     !showIntroScreen &&
     !showTourScreen &&
     (replayMode === 'login' || (!onboardingState.hasCompletedLoginSetup && !onboardingState.skippedDirectly));
+  const isSubScreenActive = showIntroScreen || showTourScreen || showLoginScreen;
+
+  const handlePanelNavigate = (tab: AppTab) => {
+    setReplayMode('none');
+    if (isSubScreenActive) {
+      if (!userProfile) {
+        const guestProfile: UserProfile = {
+          authMethod: 'guest',
+          name: 'Guest Explorer',
+          email: 'guest@charaiva.app',
+          preferredLanguage: selectedLanguage.code,
+          travelerType: 'casual_tourist',
+          visitedCount: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          badges: [],
+        };
+        setUserProfile(guestProfile);
+        saveLocalUserProfile(guestProfile);
+      }
+      updateOnboardingState({
+        hasSeenIntro: true,
+        hasCompletedTour: true,
+        hasCompletedLoginSetup: onboardingState.hasCompletedLoginSetup,
+        skippedDirectly: !onboardingState.hasCompletedLoginSetup,
+      });
+    }
+    if (tab === 'home') {
+      navigateToHome();
+    } else {
+      setCurrentExplanation(null);
+      navigateToTab(tab);
+    }
+  };
 
   return (
     <div
+      ref={appRootRef}
       id="charaiva-app-root"
       data-theme={currentTheme}
-      className="relative h-[100dvh] max-h-[100dvh] w-full overflow-hidden font-sans flex flex-col selection:bg-amber-400 selection:text-slate-950 transition-colors duration-300"
+      className="relative h-[100dvh] max-h-[100dvh] w-full overflow-hidden overflow-clip font-sans flex flex-col selection:bg-[var(--theme-accent-primary)] selection:text-[var(--theme-accent-primary-text)] transition-colors duration-300"
     >
       {/* Dynamic Ambient Background Glows */}
       <div
@@ -784,10 +1279,28 @@ export default function App() {
         style={{ backgroundColor: 'var(--theme-ambient-glow-1)' }}
       />
 
+      {/* Persistent Panel 1 (Brand & User) + Panel 2 (Explore, Photo Guide, Attractions, AI Guide, Map, Journal, Settings) */}
+      <Navigation
+        activeTab={activeTab}
+        setActiveTab={handlePanelNavigate}
+        selectedLanguage={selectedLanguage}
+        onOpenLanguageModal={() => setIsLanguageModalOpen(true)}
+        visitedMemoryCount={visitedHistory.length}
+        outputMode={outputMode}
+        onToggleOutputMode={handleToggleOutputMode}
+        deviceExactLocation={deviceExactLocation}
+        onOpenCityGuide={(city) => handleOpenCityGuide(city)}
+        currentTheme={currentTheme}
+        onSelectTheme={handleSelectTheme}
+        userProfile={userProfile}
+        isSubScreenActive={isSubScreenActive}
+      />
+
       {showIntroScreen ? (
         <AppIntroductionPage
           selectedLanguage={selectedLanguage}
           guideSettings={guideSettings}
+          userProfile={userProfile}
           isReplayMode={replayMode === 'intro'}
           onOpenLanguageModal={() => setIsLanguageModalOpen(true)}
           onStartTour={handleIntroStartTour}
@@ -799,6 +1312,7 @@ export default function App() {
         <AppTourOverlay
           selectedLanguage={selectedLanguage}
           guideSettings={guideSettings}
+          userProfile={userProfile}
           isReplayMode={replayMode === 'tour'}
           onCompleteTour={handleCompleteTour}
           onSkipTourToExploreNow={handleSkipAllToExplore}
@@ -829,210 +1343,224 @@ export default function App() {
           onReviewTour={() => setReplayMode('tour')}
         />
       ) : (
-        <>
-          {/* Top Header */}
-          <Navigation
-            activeTab={activeTab}
-            setActiveTab={(tab) => {
-              setActiveTab(tab);
-              if (tab !== 'home') {
-                setCurrentExplanation(null);
-              }
-            }}
-            selectedLanguage={selectedLanguage}
-            onOpenLanguageModal={() => setIsLanguageModalOpen(true)}
-            visitedMemoryCount={visitedHistory.length}
-            outputMode={outputMode}
-            onToggleOutputMode={handleToggleOutputMode}
-            deviceExactLocation={deviceExactLocation}
-            onOpenCityGuide={(city) => handleOpenCityGuide(city)}
-            currentTheme={currentTheme}
-            onSelectTheme={handleSelectTheme}
-          />
-
-          {/* Main Content Area - non-scrolling layout contained in remaining viewport */}
-          <main className="relative z-10 flex-1 overflow-hidden min-h-0 flex flex-col w-full max-w-5xl mx-auto px-2">
-            {/* If showing a specific camera scan result */}
-            {currentExplanation && activeTab === 'home' ? (
+        <main
+          ref={mainRef}
+          className="relative z-10 flex-1 overflow-hidden overflow-clip min-h-0 flex flex-col w-full max-w-5xl mx-auto px-2"
+        >
+          {/* If showing a specific camera scan result */}
+          {currentExplanation && activeTab === 'home' ? (
               <ExplanationView
-                landmark={currentExplanation}
-                selectedLanguage={selectedLanguage}
-                onBack={() => setCurrentExplanation(null)}
-                onOpenChatWithQuestion={handleOpenChatWithQuestion}
-                onOpenLanguageModal={() => setIsLanguageModalOpen(true)}
-                outputMode={outputMode}
-                onToggleOutputMode={handleToggleOutputMode}
-                guideSettings={guideSettings}
-                onSaveToHistory={(landmark) => {
-                  if (!visitedHistory.some((h) => h.id === landmark.id)) {
-                    setVisitedHistory((prev) => [landmark, ...prev]);
+              landmark={currentExplanation}
+              selectedLanguage={selectedLanguage}
+              onBack={() => setCurrentExplanation(null)}
+              onOpenChatWithQuestion={handleOpenChatWithQuestion}
+              onOpenLanguageModal={() => setIsLanguageModalOpen(true)}
+              outputMode={outputMode}
+              onToggleOutputMode={handleToggleOutputMode}
+              guideSettings={guideSettings}
+              onSaveToHistory={handleSaveLandmarkToJournal}
+              isSavedInHistory={visitedHistory.some(
+                (h) =>
+                  h.id === currentExplanation.id ||
+                  (h.title.toLowerCase() === currentExplanation.title.toLowerCase() &&
+                    h.visitDate === getTodayDateStr())
+              )}
+            />
+          ) : (
+            <>
+              {activeTab === 'home' && (
+                <HomeScreen
+                  setActiveTab={navigateToTab}
+                  selectedLanguage={selectedLanguage}
+                  onSelectSampleLandmark={(landmark) => {
+                    setCurrentExplanation(landmark);
+                    navigateToTab('home');
+                  }}
+                  locationCoords={locationCoords}
+                  deviceExactLocation={deviceExactLocation}
+                  isManualLocationMode={isManualLocationMode}
+                  visitedHistory={visitedHistory}
+                  onClearMemory={handleClearMemory}
+                  onRefreshLocation={refreshDeviceLocation}
+                  onOpenCityGuide={(city) => handleOpenCityGuide(city)}
+                  userProfile={userProfile}
+                  onReplayIntro={() => setReplayMode('intro')}
+                  onReplayTour={() => setReplayMode('tour')}
+                  onOpenLoginSetup={() => setReplayMode('login')}
+                />
+              )}
+
+              {activeTab === 'camera' && (
+                <CameraScreen
+                  onScanComplete={(result) => {
+                    handleScanComplete(result);
+                  }}
+                  locationCoords={locationCoords}
+                  selectedLanguage={selectedLanguage}
+                  visitedHistory={visitedHistory}
+                  onBackToHome={navigateToHome}
+                  outputMode={outputMode}
+                  onToggleOutputMode={handleToggleOutputMode}
+                  guideSettings={guideSettings}
+                  onOpenChatWithQuestion={handleOpenChatWithQuestion}
+                />
+              )}
+
+              {activeTab === 'chat' && (
+                <AIChatScreen
+                  initialQuestion={chatQuestion}
+                  onInitialQuestionConsumed={() => setChatQuestion(undefined)}
+                  landmarkContext={chatLandmarkContext || currentExplanation}
+                  selectedLanguage={selectedLanguage}
+                  visitedHistory={visitedHistory}
+                  guideSettings={guideSettings}
+                  onBackToHome={navigateToHome}
+                  onSaveToJournal={handleSaveFromAiGuide}
+                  defaultCity={deviceExactLocation?.city || locationCoords?.city || ''}
+                  defaultCountry={deviceExactLocation?.country || locationCoords?.country || 'India'}
+                  isLandmarkSaved={Boolean(
+                    (chatLandmarkContext || currentExplanation) &&
+                      visitedHistory.some(
+                        (h) =>
+                          h.title.toLowerCase() ===
+                          (chatLandmarkContext || currentExplanation)!.title.toLowerCase()
+                      )
+                  )}
+                  persistedMessages={chatMessages}
+                  onMessagesChange={setChatMessages}
+                />
+              )}
+
+              {activeTab === 'map' && (
+                <MapView
+                  locationCoords={locationCoords}
+                  deviceExactLocation={deviceExactLocation}
+                  isManualLocationMode={isManualLocationMode}
+                  onBackToHome={navigateToHome}
+                  onSelectLandmarkToScan={(landmark) => {
+                    // Opening a map pin views details without claiming a physical visit until user saves it
+                    setCurrentExplanation(landmark);
+                    navigateToTab('home');
+                  }}
+                />
+              )}
+
+              {activeTab === 'history' && (
+                <HistoryScreen
+                  visitedHistory={visitedHistory}
+                  selectedLanguage={selectedLanguage}
+                  guideSettings={guideSettings}
+                  onBackToHome={navigateToHome}
+                  onSelectLandmarkToView={(landmark) => {
+                    setCurrentExplanation(landmark);
+                    navigateToTab('home');
+                  }}
+                  onClearHistory={handleClearMemory}
+                  isAuthenticatedCloud={Boolean(auth.currentUser?.uid && userProfile?.authMethod === 'google')}
+                  accountOwnerName={userProfile?.name}
+                  isLoadingJournal={isLoadingJournal}
+                  journalFromCache={journalFromCache}
+                  journalError={journalError}
+                  onRetryLoadJournal={() => loadJournalForSession(auth.currentUser?.uid || null)}
+                  onAddJournalEntry={async (entry) => {
+                    await createJournalRecord(entry);
+                  }}
+                  onUpdateJournalEntry={updateJournalRecord}
+                  onDeleteJournalEntry={deleteJournalRecord}
+                  defaultCity={deviceExactLocation?.city || locationCoords?.city || ''}
+                  defaultCountry={deviceExactLocation?.country || locationCoords?.country || 'India'}
+                />
+              )}
+
+              {activeTab === 'city' && (
+                <CityExplorerScreen
+                  currentCity={deviceExactLocation?.city || locationCoords?.city || 'Madurai'}
+                  currentCountry={deviceExactLocation?.country || locationCoords?.country || 'India'}
+                  currentLocationName={
+                    deviceExactLocation?.locationName || locationCoords?.city || 'Current GPS Location'
                   }
-                }}
-                isSavedInHistory={visitedHistory.some((h) => h.id === currentExplanation.id)}
-              />
-            ) : (
-              <>
-                {activeTab === 'home' && (
-                  <HomeScreen
-                    setActiveTab={setActiveTab}
-                    selectedLanguage={selectedLanguage}
-                    onSelectSampleLandmark={(landmark) => {
-                      handleScanComplete(landmark);
-                    }}
-                    locationCoords={locationCoords}
-                    deviceExactLocation={deviceExactLocation}
-                    isManualLocationMode={isManualLocationMode}
-                    visitedHistory={visitedHistory}
-                    onClearMemory={handleClearMemory}
-                    onRefreshLocation={refreshDeviceLocation}
-                    onOpenCityGuide={(city) => handleOpenCityGuide(city)}
-                    userProfile={userProfile}
-                    onReplayIntro={() => setReplayMode('intro')}
-                    onReplayTour={() => setReplayMode('tour')}
-                    onOpenLoginSetup={() => setReplayMode('login')}
-                  />
-                )}
+                  isManualLocationMode={isManualLocationMode}
+                  onSetLocationMode={handleSetLocationMode}
+                  onSelectCity={handleSelectCityManually}
+                  selectedLanguage={selectedLanguage}
+                  onOpenCityGuideModal={(city, state, country) => handleOpenCityGuide(city, state, country)}
+                  onProceedToNearby={() => navigateToTab('nearby')}
+                  onProceedToMap={() => navigateToTab('map')}
+                  onProceedToCamera={() => navigateToTab('camera')}
+                  onBackToHome={navigateToHome}
+                  deviceExactLocation={deviceExactLocation}
+                  onRefreshGpsLocation={refreshDeviceLocation}
+                />
+              )}
 
-                {activeTab === 'camera' && (
-                  <CameraScreen
-                    onScanComplete={(result) => {
-                      handleScanComplete(result);
-                    }}
-                    locationCoords={locationCoords}
-                    selectedLanguage={selectedLanguage}
-                    visitedHistory={visitedHistory}
-                    onBackToHome={() => setActiveTab('home')}
-                    outputMode={outputMode}
-                    onToggleOutputMode={handleToggleOutputMode}
-                    guideSettings={guideSettings}
-                    onOpenChatWithQuestion={handleOpenChatWithQuestion}
-                  />
-                )}
+              {activeTab === 'settings' && (
+                <GuideSettingsScreen
+                  settings={guideSettings}
+                  onUpdateSettings={handleUpdateSettings}
+                  selectedLanguage={selectedLanguage}
+                  onSelectLanguage={handleSelectLanguage}
+                  outputMode={outputMode}
+                  onToggleOutputMode={handleToggleOutputMode}
+                  isManualLocationMode={isManualLocationMode}
+                  onSetLocationMode={handleSetLocationMode}
+                  onSelectCityManually={handleSelectCityManually}
+                  deviceExactLocation={deviceExactLocation}
+                  locationCoords={locationCoords}
+                  onRefreshGpsLocation={refreshDeviceLocation}
+                  currentTheme={currentTheme}
+                  onSelectTheme={handleSelectTheme}
+                  userProfile={userProfile}
+                  onUpdateProfile={handleUpdateProfileInSettings}
+                  isCloudSynced={userProfile?.authMethod === 'google'}
+                  onSignInWithGoogle={handleSignInWithGoogleFromSettings}
+                  onSwitchAccountLogin={() => setReplayMode('login')}
+                  onLogoutAndResetOnboarding={handleLogoutAndResetOnboarding}
+                  onReplayIntro={() => setReplayMode('intro')}
+                  onReplayTour={() => setReplayMode('tour')}
+                  onBackToHome={navigateToHome}
+                  visitedCount={visitedHistory.length}
+                />
+              )}
 
-                {activeTab === 'chat' && (
-                  <AIChatScreen
-                    initialQuestion={chatQuestion}
-                    landmarkContext={currentExplanation}
-                    selectedLanguage={selectedLanguage}
-                    visitedHistory={visitedHistory}
-                    guideSettings={guideSettings}
-                    onBackToHome={() => {
-                      setChatQuestion(undefined);
-                      setActiveTab('home');
-                    }}
-                  />
-                )}
-
-                {activeTab === 'map' && (
-                  <MapView
-                    locationCoords={locationCoords}
-                    deviceExactLocation={deviceExactLocation}
-                    isManualLocationMode={isManualLocationMode}
-                    onSelectLandmarkToScan={(landmark) => {
-                      handleScanComplete(landmark);
-                      setActiveTab('home');
-                    }}
-                  />
-                )}
-
-                {activeTab === 'history' && (
-                  <HistoryScreen
-                    visitedHistory={visitedHistory}
-                    selectedLanguage={selectedLanguage}
-                    onSelectLandmarkToView={(landmark) => {
-                      setCurrentExplanation(landmark);
-                      setActiveTab('home');
-                    }}
-                    onClearHistory={handleClearMemory}
-                  />
-                )}
-
-                {activeTab === 'city' && (
-                  <CityExplorerScreen
-                    currentCity={deviceExactLocation?.city || locationCoords?.city || 'Madurai'}
-                    currentCountry={deviceExactLocation?.country || locationCoords?.country || 'India'}
-                    currentLocationName={
-                      deviceExactLocation?.locationName || locationCoords?.city || 'Current GPS Location'
-                    }
-                    isManualLocationMode={isManualLocationMode}
-                    onSetLocationMode={handleSetLocationMode}
-                    onSelectCity={handleSelectCityManually}
-                    selectedLanguage={selectedLanguage}
-                    onOpenCityGuideModal={(city, state, country) => handleOpenCityGuide(city, state, country)}
-                    onProceedToNearby={() => setActiveTab('nearby')}
-                    onProceedToMap={() => setActiveTab('map')}
-                    onProceedToCamera={() => setActiveTab('camera')}
-                    deviceExactLocation={deviceExactLocation}
-                    onRefreshGpsLocation={refreshDeviceLocation}
-                  />
-                )}
-
-                {activeTab === 'settings' && (
-                  <GuideSettingsScreen
-                    settings={guideSettings}
-                    onUpdateSettings={handleUpdateSettings}
-                    selectedLanguage={selectedLanguage}
-                    onSelectLanguage={handleSelectLanguage}
-                    outputMode={outputMode}
-                    onToggleOutputMode={handleToggleOutputMode}
-                    isManualLocationMode={isManualLocationMode}
-                    onSetLocationMode={handleSetLocationMode}
-                    onSelectCityManually={handleSelectCityManually}
-                    deviceExactLocation={deviceExactLocation}
-                    locationCoords={locationCoords}
-                    onRefreshGpsLocation={refreshDeviceLocation}
-                    currentTheme={currentTheme}
-                    onSelectTheme={handleSelectTheme}
-                    userProfile={userProfile}
-                    onUpdateProfile={handleUpdateProfileInSettings}
-                    isCloudSynced={userProfile?.authMethod === 'google'}
-                    onSignInWithGoogle={handleSignInWithGoogleFromSettings}
-                    onSwitchAccountLogin={() => setReplayMode('login')}
-                    onLogoutAndResetOnboarding={handleLogoutAndResetOnboarding}
-                    onReplayIntro={() => setReplayMode('intro')}
-                    onReplayTour={() => setReplayMode('tour')}
-                    visitedCount={visitedHistory.length}
-                  />
-                )}
-
-                {activeTab === 'nearby' && (
-                  <NearbyAttractionsScreen
-                    locationCoords={locationCoords}
-                    deviceExactLocation={deviceExactLocation}
-                    isManualLocationMode={isManualLocationMode}
-                    onRefreshDeviceLocation={refreshDeviceLocation}
-                    selectedLanguage={selectedLanguage}
-                    onSelectAttractionForGuide={(attraction) => {
-                      handleOpenChatWithQuestion(
-                        `Give me a detailed tour guide speech on ${attraction.title} in ${attraction.city}. Why is it significant?`
-                      );
-                    }}
-                    onOpenChatWithQuestion={handleOpenChatWithQuestion}
-                    onNavigateToPhotoGuide={() => setActiveTab('camera')}
-                    onOpenCityGuide={(city) => handleOpenCityGuide(city)}
-                    guideSettings={guideSettings}
-                    outputMode={outputMode}
-                  />
-                )}
-              </>
-            )}
-          </main>
-
-          {/* Two-Tier City Guide Modal (Brief Overview + In-Depth Guide) */}
-          <CityGuideModal
-            isOpen={isCityGuideModalOpen}
-            onClose={() => setIsCityGuideModalOpen(false)}
-            cityName={activeCityGuideTarget}
-            stateName={activeStateGuideTarget}
-            countryName={activeCountryGuideTarget}
-            selectedLanguage={selectedLanguage}
-            guideSettings={guideSettings}
-            onProceedToNearby={() => {
-              setActiveTab('nearby');
-            }}
-          />
-        </>
+              {activeTab === 'nearby' && (
+                <NearbyAttractionsScreen
+                  locationCoords={locationCoords}
+                  deviceExactLocation={deviceExactLocation}
+                  isManualLocationMode={isManualLocationMode}
+                  onRefreshDeviceLocation={refreshDeviceLocation}
+                  selectedLanguage={selectedLanguage}
+                  onSelectAttractionForGuide={(attraction) => {
+                    handleOpenChatWithQuestion(
+                      `Give me a detailed tour guide speech on ${attraction.title} in ${attraction.city}. Why is it significant?`
+                    );
+                  }}
+                  onOpenChatWithQuestion={handleOpenChatWithQuestion}
+                  onNavigateToPhotoGuide={() => navigateToTab('camera')}
+                  onOpenCityGuide={(city) => handleOpenCityGuide(city)}
+                  onBackToHome={navigateToHome}
+                  guideSettings={guideSettings}
+                  outputMode={outputMode}
+                />
+              )}
+            </>
+          )}
+        </main>
       )}
+
+      {/* Two-Tier City Guide Modal (Brief Overview + In-Depth Guide) */}
+      <CityGuideModal
+        isOpen={isCityGuideModalOpen}
+        onClose={() => setIsCityGuideModalOpen(false)}
+        cityName={activeCityGuideTarget}
+        stateName={activeStateGuideTarget}
+        countryName={activeCountryGuideTarget}
+        selectedLanguage={selectedLanguage}
+        guideSettings={guideSettings}
+        onProceedToNearby={() => {
+          setReplayMode('none');
+          navigateToTab('nearby');
+        }}
+      />
 
       {/* Subtle Sync / Onboarding Confirmation Banner */}
       {statusToast && (

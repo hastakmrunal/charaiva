@@ -13,7 +13,7 @@ export const SUPPORTED_LANGUAGES: Language[] = [
   { code: 'mr', name: 'Marathi', nativeName: 'मराठी', speechCode: 'mr-IN', flag: '🇮🇳' },
   { code: 'te', name: 'Telugu', nativeName: 'తెలుగు', speechCode: 'te-IN', flag: '🇮🇳' },
   { code: 'gu', name: 'Gujarati', nativeName: 'ગુજરાતી', speechCode: 'gu-IN', flag: '🇮🇳' },
-  { code: 'kn', name: 'Kannada', nativeName: 'કન્નડ', speechCode: 'kn-IN', flag: '🇮🇳' },
+  { code: 'kn', name: 'Kannada', nativeName: 'ಕನ್ನಡ', speechCode: 'kn-IN', flag: '🇮🇳' },
   { code: 'ar', name: 'Arabic', nativeName: 'العربية', speechCode: 'ar-SA', flag: '🇸🇦', direction: 'rtl' },
   { code: 'it', name: 'Italian', nativeName: 'Italiano', speechCode: 'it-IT', flag: '🇮🇹' },
   { code: 'pt', name: 'Portuguese', nativeName: 'Português', speechCode: 'pt-BR', flag: '🇧🇷' },

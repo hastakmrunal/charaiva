@@ -3,6 +3,7 @@ import { computeDistanceKm, formatWalkOrDriveTime, normalizePlaceCategory } from
 import { generateContentWithFallback } from '../server';
 
 const discoveryCache = new Map<string, { data: { places: Record<string, any>; areaOverview: string }; expiresAt: number }>();
+const fullRadarSpotsCache = new Map<string, { data: { areaOverview: string; spots: DiscoveredRealPlace[]; groundTruthCount: number }; expiresAt: number }>();
 const wikiImageCache = new Map<string, string | null>();
 
 export interface DiscoveredRealPlace {
@@ -599,7 +600,7 @@ export async function resolveExactPlacePhotoWithGooglePlaces(
       const pUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=pageimages|info&inprop=url&pithumbsize=960&format=json`;
       const pRes = await fetch(pUrl, {
         headers: { 'User-Agent': WIKI_USER_AGENT },
-        signal: AbortSignal.timeout(3000),
+        signal: AbortSignal.timeout(1800),
       });
       if (pRes.ok) {
         const pData = await pRes.json();
@@ -642,7 +643,7 @@ export async function resolveExactPlacePhotoWithGooglePlaces(
     const sUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(placeName + ' ' + (city || ''))}&srlimit=5&format=json`;
     const sRes = await fetch(sUrl, {
       headers: { 'User-Agent': WIKI_USER_AGENT },
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(1800),
     });
 
     if (sRes.ok) {
@@ -660,7 +661,7 @@ export async function resolveExactPlacePhotoWithGooglePlaces(
         const infoUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(art.title)}&prop=pageimages|info&inprop=url&pithumbsize=960&format=json`;
         const infoRes = await fetch(infoUrl, {
           headers: { 'User-Agent': WIKI_USER_AGENT },
-          signal: AbortSignal.timeout(3000),
+          signal: AbortSignal.timeout(1800),
         });
 
         if (infoRes.ok) {
@@ -699,7 +700,7 @@ export async function resolveExactPlacePhotoWithGooglePlaces(
     const cUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(placeName + ' ' + (city || ''))}&gsrnamespace=6&gsrlimit=5&prop=imageinfo&iiprop=url&iiurlwidth=960&format=json&origin=*`;
     const cRes = await fetch(cUrl, {
       headers: { 'User-Agent': WIKI_USER_AGENT },
-      signal: AbortSignal.timeout(3500),
+      signal: AbortSignal.timeout(1800),
     });
 
     if (cRes.ok) {
@@ -817,7 +818,7 @@ async function fetchGooglePlacesNearby(
         'X-Goog-FieldMask': fieldMask,
       },
       body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(2500),
     });
 
     if (res.ok) {
@@ -905,7 +906,7 @@ async function fetchOpenStreetMapNearby(
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: `data=${encodeURIComponent(overpassQuery)}`,
-          signal: AbortSignal.timeout(3500),
+          signal: AbortSignal.timeout(1200),
         });
 
         if (res.ok) {
@@ -1008,6 +1009,12 @@ export async function getRealNearbyPlaces({
 }> {
   const lat = latitude || 21.1458;
   const lng = longitude || 79.0882;
+  const radarCacheKey = `radar-${lat.toFixed(2)}-${lng.toFixed(2)}-${(city || '').toLowerCase().trim()}-${language}`;
+
+  const cachedRadar = fullRadarSpotsCache.get(radarCacheKey);
+  if (cachedRadar && cachedRadar.expiresAt > Date.now()) {
+    return cachedRadar.data;
+  }
 
   // Gather real candidates across sources
   const [gmpPlaces, osmPlaces] = await Promise.all([
@@ -1272,9 +1279,9 @@ Return JSON:
     }
   }
 
-  // Resolve authentic real photographs for every discovered place
+  // Resolve authentic real photographs in parallel with a fast cap so client cards never hang
   const finalSpots: DiscoveredRealPlace[] = await Promise.all(
-    topPlaces.map(async (place) => {
+    topPlaces.slice(0, 28).map(async (place, idx) => {
       const match = aiEnrichedMap[place.name.toLowerCase().trim()];
 
       // Resolve real place photograph via Google Places API (New) or exact ground truth
@@ -1286,15 +1293,43 @@ Return JSON:
         photos: place.photos || [],
       };
 
-      if (!photoData.hasRealPhoto || !photoData.photoUrl) {
-        photoData = await resolveExactPlacePhotoWithGooglePlaces(
-          place.name,
-          city,
-          place.latitude,
-          place.longitude,
-          place.placeId,
-          gmpApiKey
-        );
+      if ((!photoData.hasRealPhoto || !photoData.photoUrl) && idx < 12) {
+        try {
+          photoData = await Promise.race([
+            resolveExactPlacePhotoWithGooglePlaces(
+              place.name,
+              city,
+              place.latitude,
+              place.longitude,
+              place.placeId,
+              gmpApiKey
+            ),
+            new Promise<ExactPlacePhotoResult>((resolve) =>
+              setTimeout(() => {
+                const fb = getCategoryAuthenticFallbackPhoto(place.name);
+                const fbUrl = `/api/places/proxy-image?url=${encodeURIComponent(fb.url)}`;
+                resolve({
+                  hasRealPhoto: true,
+                  photoUrl: fbUrl,
+                  placeId: place.placeId || place.id,
+                  authorAttributions: [],
+                  photos: [{ name: fb.title, url: fbUrl, authorAttributions: [] }],
+                });
+              }, 1600)
+            ),
+          ]);
+        } catch {
+          // keep fallback below
+        }
+      } else if (!photoData.hasRealPhoto || !photoData.photoUrl) {
+        const fb = getCategoryAuthenticFallbackPhoto(place.name);
+        photoData = {
+          hasRealPhoto: true,
+          photoUrl: `/api/places/proxy-image?url=${encodeURIComponent(fb.url)}`,
+          placeId: place.placeId || place.id,
+          authorAttributions: [],
+          photos: [],
+        };
       }
 
       const oneLineImportance =
@@ -1340,9 +1375,16 @@ Return JSON:
     })
   );
 
-  return {
+  const radarResult = {
     areaOverview,
     spots: finalSpots,
     groundTruthCount: finalSpots.length,
   };
+
+  fullRadarSpotsCache.set(radarCacheKey, {
+    data: radarResult,
+    expiresAt: Date.now() + 15 * 60 * 1000, // 15 minutes TTL
+  });
+
+  return radarResult;
 }

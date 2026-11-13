@@ -42,7 +42,8 @@ import {
   RotateCcw,
   Cloud,
   Palette,
-  Edit3
+  Edit3,
+  ArrowLeft
 } from 'lucide-react';
 import {
   GuideSettings,
@@ -99,6 +100,7 @@ interface SettingsScreenProps {
   onLogoutAndResetOnboarding?: () => void;
   onReplayIntro?: () => void;
   onReplayTour?: () => void;
+  onBackToHome?: () => void;
   visitedCount?: number;
 }
 
@@ -259,6 +261,7 @@ export const GuideSettingsScreen: React.FC<SettingsScreenProps> = ({
   onLogoutAndResetOnboarding,
   onReplayIntro,
   onReplayTour,
+  onBackToHome,
   visitedCount = 0,
 }) => {
   // Sub-tab selection including synced Explorer Profile & Onboarding
@@ -404,19 +407,32 @@ export const GuideSettingsScreen: React.FC<SettingsScreenProps> = ({
       return;
     }
 
+    const isMale = settings.voiceGender === 'male';
     const sampleTexts: Record<string, string> = {
       en: "Hello traveler! I am your personal live guide. I'm ready to accompany you through every monument and historic sight with vivid stories.",
-      hi: "नमस्ते! मैं आपकी पर्सनल टूर गाइड हूँ। मैं आपके साथ हर ऐतिहासिक स्मारक, मंदिर और अद्भुत स्थानों की रोचक कहानियाँ साझा करने के लिए तैयार हूँ।",
+      hi: isMale
+        ? "नमस्ते! मैं आपका पर्सनल टूर गाइड हूँ। मैं आपके साथ हर ऐतिहासिक स्मारक, मंदिर और अद्भुत स्थानों की रोचक कहानियाँ साझा करने के लिए तैयार हूँ।"
+        : "नमस्ते! मैं आपकी पर्सनल टूर गाइड हूँ। मैं आपके साथ हर ऐतिहासिक स्मारक, मंदिर और अद्भुत स्थानों की रोचक कहानियाँ साझा करने के लिए तैयार हूँ।",
       ta: "வணக்கம்! நான் உங்கள் நேரடி பயண வழிகாட்டி. வரலாற்றுச் சிறப்புமிக்க இடங்களின் ஆழமான கதைகளை உங்களுக்கு விவரிக்கத் தயாராக உள்ளேன்.",
       te: "నమస్కారం! నేను మీ పర్యటన మార్గదర్శిని. చారిత్రక కట్టడాల విశేషాలను మీకు వివరించడానికి సిద్ధంగా ఉన్నాను.",
       kn: "ನಮಸ್ಕಾರ! ನಾನು ನಿಮ್ಮ ಪ್ರವಾಸ ಮಾರ್ಗದರ್ಶಿ. ಐತಿಹಾಸಿಕ ಸ್ಥಳಗಳ ವಿವರಗಳನ್ನು ನಿಮಗೆ ತಿಳಿಸಲು ಸಿದ್ಧನಾಗಿದ್ದೇನೆ.",
       bn: "নমস্কার! আমি আপনার ব্যক্তিগত ট্যুর গাইড। ঐতিহাসিক স্মৃতিসৌধ ও দর্শনীয় স্থানের গল্প আপনাদের সাথে ভাগ করে নিতে প্রস্তুত।",
-      mr: "नमस्कार! मी तुमची वैयक्तिक टूर मार्गदर्शक आहे. ऐतिहासिक वास्तू आणि प्रेक्षणीय स्थळांची माहिती देण्यासाठी मी सज्ज आहे.",
-      gu: "નમસ્તે! હું તમારી વ્યક્તિગત પ્રવાસ માર્ગદર્શિકા છું. ઐતિહાસિક સ્થળોની રોચક વાતો જણાવવા હું તૈયાર છું.",
+      mr: isMale
+        ? "नमस्कार! मी तुमचा वैयक्तिक टूर मार्गदर्शक आहे. ऐतिहासिक वास्तू आणि प्रेक्षणीय स्थळांची माहिती देण्यासाठी मी सज्ज आहे."
+        : "नमस्कार! मी तुमची वैयक्तिक टूर मार्गदर्शक आहे. ऐतिहासिक वास्तू आणि प्रेक्षणीय स्थळांची माहिती देण्यासाठी मी सज्ज आहे.",
+      gu: isMale
+        ? "નમસ્તે! હું તમારો વ્યક્તિગત પ્રવાસ માર્ગદર્શક છું. ઐતિહાસિક સ્થળોની રોચક વાતો જણાવવા હું તૈયાર છું."
+        : "નમસ્તે! હું તમારી વ્યક્તિગત પ્રવાસ માર્ગદર્શિકા છું. ઐતિહાસિક સ્થળોની રોચક વાતો જણાવવા હું તૈયાર છું.",
       ml: "നമസ്കാരം! ഞാൻ നിങ്ങളുടെ വ്യക്തിഗത ടൂർ ഗൈഡാണ്. ചരിത്രപ്രസിദ്ധമായ സ്ഥലങ്ങളുടെ വിശേഷങ്ങൾ പങ്കിടാൻ ഞാൻ തയ്യാറാണ്.",
-      es: "¡Hola viajero! Soy tu guía personal. Estoy lista para compartir contigo las historias más cautivadoras de cada lugar.",
-      fr: "Bonjour voyageur ! Je suis votre guide personnelle. Je suis prête à vous révéler l'histoire fascinante de ce lieu.",
-      de: "Hallo Reisender! Ich bin Ihre persönliche Reiseleiterin. Ich freue mich darauf, Ihnen die reiche Geschichte zu erzählen.",
+      es: isMale
+        ? "¡Hola viajero! Soy tu guía personal. Estoy listo para compartir contigo las historias más cautivadoras de cada lugar."
+        : "¡Hola viajero! Soy tu guía personal. Estoy lista para compartir contigo las historias más cautivadoras de cada lugar.",
+      fr: isMale
+        ? "Bonjour voyageur ! Je suis votre guide personnel. Je suis prêt à vous révéler l'histoire fascinante de ce lieu."
+        : "Bonjour voyageur ! Je suis votre guide personnelle. Je suis prête à vous révéler l'histoire fascinante de ce lieu.",
+      de: isMale
+        ? "Hallo Reisender! Ich bin Ihr persönlicher Reiseleiter. Ich freue mich darauf, Ihnen die reiche Geschichte zu erzählen."
+        : "Hallo Reisender! Ich bin Ihre persönliche Reiseleiterin. Ich freue mich darauf, Ihnen die reiche Geschichte zu erzählen.",
       ja: "こんにちは！あなたの専属ツアーガイドです。歴史的な名所を丁寧にご案内いたします。",
     };
 
@@ -425,6 +441,7 @@ export const GuideSettingsScreen: React.FC<SettingsScreenProps> = ({
     setIsPlayingTestVoice(true);
     speechManager.speak({
       text: textToSpeak,
+      language: selectedLanguage.name,
       languageCode: selectedLanguage.speechCode,
       gender: settings.voiceGender,
       pitch: settings.voicePitch,
@@ -449,6 +466,23 @@ export const GuideSettingsScreen: React.FC<SettingsScreenProps> = ({
       >
         <div className="flex items-center justify-between gap-2 mb-2">
           <div className="flex items-center gap-2">
+            {onBackToHome && (
+              <button
+                id="btn-settings-back-home"
+                type="button"
+                onClick={onBackToHome}
+                style={{
+                  backgroundColor: 'var(--theme-card-bg)',
+                  borderColor: 'var(--theme-card-border)',
+                  color: 'var(--theme-text-title)',
+                }}
+                className="p-2 rounded-xl border cursor-pointer hover:border-[var(--theme-card-border-glow)] transition-all active:scale-95 shrink-0"
+                title="Back to Home"
+                aria-label="Back to Home"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
             <div
               style={{
                 backgroundColor: 'var(--theme-card-bg)',
@@ -1610,7 +1644,7 @@ export const GuideSettingsScreen: React.FC<SettingsScreenProps> = ({
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-xs font-bold text-[var(--theme-text-title)] flex items-center gap-1.5">
-                        <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                        <ShieldCheck className="w-3.5 h-3.5 text-[var(--theme-accent-secondary)]" />
                         <span>NO - Do Not Save (Conserve Storage)</span>
                       </span>
                       {!settings.savePhotosToDeviceMemory && (
@@ -1621,9 +1655,17 @@ export const GuideSettingsScreen: React.FC<SettingsScreenProps> = ({
                       Do not write photos to phone memory. Photos are processed purely in-memory during recognition and discarded after the tour to conserve phone space.
                     </p>
                   </div>
-                  <div className="mt-2 pt-2 border-t border-[var(--theme-card-border)] flex items-center justify-between text-[10px] text-amber-400/90 font-medium">
+                  <div className="mt-2 pt-2 border-t border-[var(--theme-card-border)] flex items-center justify-between text-[10px] text-[var(--theme-accent-secondary)] font-medium">
                     <span>Zero Storage Footprint</span>
-                    <span className="px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-700/50">In-Memory Stream</span>
+                    <span
+                      style={{
+                        backgroundColor: 'var(--theme-card-bg)',
+                        borderColor: 'var(--theme-card-border)',
+                      }}
+                      className="px-1.5 py-0.5 rounded border"
+                    >
+                      In-Memory Stream
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1644,7 +1686,7 @@ export const GuideSettingsScreen: React.FC<SettingsScreenProps> = ({
                     <div className="h-6 w-px bg-[var(--theme-card-border)]" />
                     <div>
                       <span className="text-[10px] text-[var(--theme-text-muted)] block">Storage Location</span>
-                      <span className="font-mono text-[10px] text-amber-300">/app-data/photos</span>
+                      <span className="font-mono text-[10px] text-[var(--theme-accent-secondary)]">/app-data/photos</span>
                     </div>
                   </div>
 
@@ -1780,7 +1822,7 @@ export const GuideSettingsScreen: React.FC<SettingsScreenProps> = ({
                   <span>Voice Synthesis & Tone Tuning</span>
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full theme-badge-gold">
-                  Female Voice Default
+                  {settings.voiceGender === 'male' ? 'Male Voice Active' : 'Female Voice Active'}
                 </span>
               </div>
 

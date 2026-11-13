@@ -24,6 +24,7 @@ function getGenAI(): GoogleGenAI {
     genAIClient = new GoogleGenAI({
       apiKey: apiKey || '',
       httpOptions: {
+        apiVersion: 'v1beta',
         headers: {
           'User-Agent': 'aistudio-build',
         },
@@ -101,6 +102,64 @@ export async function generateContentWithFallback(ai: GoogleGenAI, params: any) 
   throw lastError;
 }
 
+// Resilient AI streaming with fallback across fast tiers
+export async function generateContentStreamWithFallback(ai: GoogleGenAI, params: any) {
+  const fallbackModels = [
+    'gemini-3.1-flash-lite',
+    'gemini-4-hydrogen',
+    'gemini-3.8-flash',
+  ];
+  const preferredModel = params.model || 'gemini-3.1-flash-lite';
+  const modelsToTry = [preferredModel, ...fallbackModels.filter((m) => m !== preferredModel)];
+
+  let lastError: any = null;
+  for (let attempt = 0; attempt < modelsToTry.length; attempt++) {
+    const modelName = modelsToTry[attempt];
+    try {
+      const stream = await ai.models.generateContentStream({
+        ...params,
+        model: modelName,
+      });
+      return stream;
+    } catch (err: any) {
+      lastError = err;
+      const status = err?.status || err?.code || err?.response?.status;
+      const msg = err?.message || String(err);
+      const isRetryable =
+        status === 503 ||
+        status === 429 ||
+        status === 500 ||
+        status === 404 ||
+        msg.includes('503') ||
+        msg.includes('429') ||
+        msg.includes('404') ||
+        msg.includes('NOT_FOUND') ||
+        msg.includes('UNAVAILABLE') ||
+        msg.includes('RESOURCE_EXHAUSTED');
+
+      if (isRetryable && attempt < modelsToTry.length - 1) {
+        await new Promise((r) => setTimeout(r, 120 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
+
+// Extracts an evolving JSON string field value cleanly from a partially streamed JSON buffer
+function extractPartialJsonStringField(partialJson: string, fieldName: string): string | null {
+  const regex = new RegExp(`"${fieldName}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)`, 's');
+  const match = partialJson.match(regex);
+  if (!match) return null;
+  return match[1]
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '')
+    .replace(/\\t/g, ' ')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\');
+}
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'Charaiva Tourist Guide API' });
@@ -130,7 +189,8 @@ function buildTopicGuidance(topics?: Record<string, boolean>, persona: string = 
     if (topics.mysteries) selectedList.push('Curiosities, riddles & hidden mysteries (secret passages, unsolved historical enigmas, legends, local lore)');
   }
 
-  let personaStyle = 'Speak as a warm, charismatic, articulate, and engaging female tour guide with welcoming spoken cadence, personal anecdotes, and vivid storytelling.';
+  const voiceLabel = gender === 'male' ? 'male' : 'female';
+  let personaStyle = `Speak as a warm, charismatic, articulate, and engaging ${voiceLabel} tour guide with welcoming spoken cadence, personal anecdotes, and vivid storytelling.`;
   if (persona === 'scholarly') {
     personaStyle = 'Speak with scholarly rigor, academic precision, chronological accuracy, and authoritative architectural and historical citations.';
   } else if (persona === 'adventurous') {
@@ -141,7 +201,7 @@ function buildTopicGuidance(topics?: Record<string, boolean>, persona: string = 
 
   return `
 GUIDE PERSONA & VOICE TONING:
-${personaStyle} (Voice Character: ${gender === 'male' ? 'Male Guide' : 'Female Guide - Warm & Natural'})
+${personaStyle} (Voice Character: ${gender === 'male' ? 'Male Guide - Clear, Rich & Natural' : 'Female Guide - Warm & Natural'})
 
 MANDATORY SPEECH CATEGORY REQUIREMENTS:
 Your audio narration and explanation MUST explicitly cover and weave in the following selected dimensions:
@@ -365,6 +425,7 @@ async function handleLandmarkRecognition(req: express.Request, res: express.Resp
     const {
       image,
       imageBase64,
+      imageUrl,
       location,
       coords,
       language = 'English',
@@ -375,7 +436,7 @@ async function handleLandmarkRecognition(req: express.Request, res: express.Resp
       voiceGender = 'female',
     } = req.body;
 
-    const rawImg = image || imageBase64;
+    const rawImg = image || imageBase64 || imageUrl;
     if (!rawImg) {
       return res.status(400).json({ error: 'Image data is required' });
     }
@@ -590,6 +651,7 @@ async function handleLandmarkRecognitionStream(req: express.Request, res: expres
     const {
       image,
       imageBase64,
+      imageUrl,
       location,
       coords,
       language = 'English',
@@ -600,7 +662,7 @@ async function handleLandmarkRecognitionStream(req: express.Request, res: expres
       voiceGender = 'female',
     } = req.body;
 
-    const rawImg = image || imageBase64;
+    const rawImg = image || imageBase64 || imageUrl;
     if (!rawImg) {
       sendEvent('error', { message: 'Image data is required' });
       return;
@@ -673,7 +735,7 @@ Your task:
 11. Describe 3 to 4 supplementary/contextual visual scenes in "supplementaryScenes" (title, caption, type).
 12. Add 4 relevant tags.`;
 
-    const response = await generateContentWithFallback(ai, {
+    const stream = await generateContentStreamWithFallback(ai, {
       model: 'gemini-3.1-flash-lite',
       contents: {
         parts: [
@@ -738,7 +800,44 @@ Your task:
       },
     });
 
-    const jsonText = response.text || '{}';
+    let accumulatedJson = '';
+    let lastDeltaSentAt = 0;
+    let lastSentTitle = '';
+    let lastSentSummary = '';
+    let lastSentNarrationLen = 0;
+
+    for await (const chunk of stream) {
+      const piece = chunk.text || '';
+      if (!piece) continue;
+      accumulatedJson += piece;
+
+      const now = Date.now();
+      if (now - lastDeltaSentAt >= 70) {
+        const partialTitle = extractPartialJsonStringField(accumulatedJson, 'title');
+        const partialLocation = extractPartialJsonStringField(accumulatedJson, 'locationName');
+        const partialSummary = extractPartialJsonStringField(accumulatedJson, 'summary');
+        const partialNarration = extractPartialJsonStringField(accumulatedJson, 'narration');
+
+        if (
+          (partialTitle && partialTitle !== lastSentTitle) ||
+          (partialSummary && partialSummary !== lastSentSummary) ||
+          (partialNarration && partialNarration.length > lastSentNarrationLen + 8)
+        ) {
+          if (partialTitle) lastSentTitle = partialTitle;
+          if (partialSummary) lastSentSummary = partialSummary;
+          if (partialNarration) lastSentNarrationLen = partialNarration.length;
+          lastDeltaSentAt = now;
+          sendEvent('batch2_delta', {
+            ...(partialTitle ? { title: partialTitle } : {}),
+            ...(partialLocation ? { locationName: partialLocation } : {}),
+            ...(partialSummary ? { summary: partialSummary } : {}),
+            ...(partialNarration ? { narration: partialNarration } : {}),
+          });
+        }
+      }
+    }
+
+    const jsonText = accumulatedJson || '{}';
     const parsedResult = safeJsonParse<any>(jsonText, {});
 
     const batch2Data = {
@@ -750,7 +849,7 @@ Your task:
       historicalPeriod: parsedResult.historicalPeriod,
       ocrDetectedText: parsedResult.ocrDetectedText,
       summary: parsedResult.summary || 'Heritage landmark discovered.',
-      narration: parsedResult.narration || '',
+      narration: parsedResult.narration || parsedResult.summary || 'This remarkable sight reflects rich local history and craftsmanship.',
       keyFacts: parsedResult.keyFacts || [],
       architecturalHighlights: parsedResult.architecturalHighlights || [],
       suggestedQuestions: parsedResult.suggestedQuestions || [],
@@ -839,32 +938,66 @@ app.post('/api/recognize-landmark-stream', handleLandmarkRecognitionStream);
 app.post('/api/recognize-landmark/stream', handleLandmarkRecognitionStream);
 app.post('/api/stream-scan', handleLandmarkRecognitionStream);
 
-// Audio TTS Endpoint using Gemini TTS
+// Audio TTS Endpoint using Gemini TTS with caching & male/female voice clarity
 app.post('/api/tts', async (req, res) => {
   try {
-    const { text, voiceName = 'Kore' } = req.body;
+    const { text, voiceName, gender = 'female' } = req.body;
     if (!text) {
       return res.status(400).json({ error: 'Text parameter required' });
     }
 
+    const isMale = gender === 'male';
+    const selectedVoice = voiceName || (isMale ? 'Fenrir' : 'Kore');
+    const cleanSnippet = String(text).slice(0, 500).trim();
+    const ttsCacheKey = `tts:${selectedVoice}:${cleanSnippet}`;
+    const cachedTts = getCached(ttsCacheKey);
+    if (cachedTts) {
+      return res.json({ success: true, audioBase64: cachedTts, format: 'audio/wav', voiceName: selectedVoice });
+    }
+
     const ai = getGenAI();
-    const ttsResponse = await ai.models.generateContent({
-      model: 'gemini-3.8-flash-lite-tts',
-      contents: [{ parts: [{ text: `Say with warm, enthusiastic tour guide tone: ${text.slice(0, 500)}` }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: voiceName || 'Kore' },
+    const speechStyle = isMale
+      ? 'Clear, calm, articulate male tour guide narrator with warm resonant tone'
+      : 'Clear, warm, natural female tour guide narrator';
+
+    const requestTts = (modelName: string) =>
+      ai.models.generateContent({
+        model: modelName,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: cleanSnippet,
+                speechMetadata: {
+                  style: speechStyle,
+                },
+              },
+            ],
+          },
+        ],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: selectedVoice },
+            },
           },
         },
-      },
-    });
+      });
+
+    let ttsResponse;
+    try {
+      ttsResponse = await requestTts('gemini-3.8-flash-lite-tts');
+    } catch {
+      ttsResponse = await requestTts('gemini-3.8-flash-tts');
+    }
 
     const base64Audio = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
 
     if (base64Audio) {
-      res.json({ success: true, audioBase64: base64Audio, format: 'audio/pcm' });
+      setCached(ttsCacheKey, base64Audio, 900);
+      res.json({ success: true, audioBase64: base64Audio, format: 'audio/wav', voiceName: selectedVoice });
     } else {
       res.json({ success: false, fallbackToBrowser: true });
     }
@@ -874,11 +1007,26 @@ app.post('/api/tts', async (req, res) => {
   }
 });
 
-// Interactive AI Tour Guide Chat Endpoint
-app.post('/api/chat', async (req, res) => {
+// Interactive AI Tour Guide Chat Streaming Endpoint (SSE word-by-word)
+app.post('/api/chat-stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const sendEvent = (type: string, data: any) => {
+    if (res.writableEnded) return;
+    try {
+      res.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+    } catch {
+      // ignore
+    }
+  };
+
   try {
     const {
       message,
+      question,
       landmarkContext,
       language = 'English',
       history = [],
@@ -887,8 +1035,15 @@ app.post('/api/chat', async (req, res) => {
       voiceGender = 'female',
     } = req.body;
 
+    const userMessage = String(message || question || '').trim();
+    if (!userMessage) {
+      sendEvent('error', { message: 'A question or message is required.' });
+      return;
+    }
+
     const ai = getGenAI();
     const topicDirectives = buildTopicGuidance(topics, persona, voiceGender);
+    const guideRole = voiceGender === 'male' ? 'live personal male guide' : 'live personal female guide';
 
     const systemPrompt = `You are Charaiva, an expert multilingual AI Tourist Guide.
 Current Location / Subject Context: ${landmarkContext ? JSON.stringify(landmarkContext) : 'Exploring local heritage'}.
@@ -899,17 +1054,81 @@ ${topicDirectives}
 
 Directives:
 1. Always respond in "${language}".
-2. Be warm, knowledgeable, concise, and engaging (like a live personal female guide talking through a headset).
+2. Be warm, knowledgeable, concise, and engaging (like a ${guideRole} talking through a headset).
 3. Verify historical, geographical, and architectural facts for absolute correctness.
 4. If the user interrupts or asks a specific question, answer directly with rich detail without repeating basic info already covered.
-5. Keep answers under 150 words for fast reading and listening.`;
+5. Keep answers clear and under 160 words for fast reading and listening.`;
+
+    const stream = await generateContentStreamWithFallback(ai, {
+      model: 'gemini-3.1-flash-lite',
+      contents: userMessage,
+      config: {
+        systemInstruction: systemPrompt,
+      },
+    });
+
+    let fullReply = '';
+    for await (const chunk of stream) {
+      const piece = chunk.text || '';
+      if (piece) {
+        fullReply += piece;
+        sendEvent('delta', { text: piece });
+      }
+    }
+
+    sendEvent('done', {
+      reply: fullReply || 'I am happy to guide you further. What specific detail would you like to explore next?',
+    });
+  } catch (error: any) {
+    console.error('Error in chat-stream:', error);
+    sendEvent('error', { message: error?.message || 'Chat stream unavailable' });
+  } finally {
+    if (!res.writableEnded) res.end();
+  }
+});
+
+// Interactive AI Tour Guide Chat Endpoint (JSON fallback)
+app.post('/api/chat', async (req, res) => {
+  try {
+    const {
+      message,
+      question,
+      landmarkContext,
+      language = 'English',
+      history = [],
+      topics,
+      persona = 'warm_female',
+      voiceGender = 'female',
+    } = req.body;
+
+    const userMessage = String(message || question || '').trim();
+    if (!userMessage) {
+      return res.status(400).json({ error: 'A question or message is required' });
+    }
+
+    const ai = getGenAI();
+    const topicDirectives = buildTopicGuidance(topics, persona, voiceGender);
+    const guideRole = voiceGender === 'male' ? 'live personal male guide' : 'live personal female guide';
+
+    const systemPrompt = `You are Charaiva, an expert multilingual AI Tourist Guide.
+Current Location / Subject Context: ${landmarkContext ? JSON.stringify(landmarkContext) : 'Exploring local heritage'}.
+User Language: "${language}".
+Memory of Explained Topics in this Session: [${history.join(', ')}].
+
+${topicDirectives}
+
+Directives:
+1. Always respond in "${language}".
+2. Be warm, knowledgeable, concise, and engaging (like a ${guideRole} talking through a headset).
+3. Verify historical, geographical, and architectural facts for absolute correctness.
+4. If the user interrupts or asks a specific question, answer directly with rich detail without repeating basic info already covered.
+5. Keep answers under 160 words for fast reading and listening.`;
 
     const response = await generateContentWithFallback(ai, {
       model: 'gemini-3.1-flash-lite',
-      contents: message,
+      contents: userMessage,
       config: {
         systemInstruction: systemPrompt,
-        temperature: 0.7,
       },
     });
 
@@ -1465,28 +1684,8 @@ app.post('/api/location-overview', async (req, res) => {
   }
 
   const gmpApiKey = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
-
-  // Resolve authentic photo for this city/location
-  let resolvedPhotoUrl = '';
-  try {
-    const photoResult = await resolveExactPlacePhotoWithGooglePlaces(
-      city && city !== 'Local Area' ? city : locationName,
-      city,
-      lat,
-      lng,
-      undefined,
-      gmpApiKey
-    );
-    if (photoResult?.hasRealPhoto && photoResult.photoUrl) {
-      resolvedPhotoUrl = photoResult.photoUrl;
-    }
-  } catch (e) {
-    console.warn('Could not resolve photo for location overview:', e);
-  }
-
-  try {
-    const ai = getGenAI();
-    const prompt = `Provide a rich tourist overview of the current device location:
+  const ai = getGenAI();
+  const prompt = `Provide a rich tourist overview of the current device location:
 Area/Place: "${locationName}"
 City: "${city}", Country: "${country}"
 Coordinates: Lat ${lat}, Lng ${lng}
@@ -1499,27 +1698,49 @@ Return JSON:
 - "localMustDos": 3 bullet points of top things to do right here
 - "currentAtmosphere": e.g. "Heritage Central Hub", "Historic Old Town", "Cultural City Center"`;
 
-    const aiRes = await generateContentWithFallback(ai, {
-      model: 'gemini-3.1-flash-lite',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            headline: { type: Type.STRING },
-            description: { type: Type.STRING },
-            photoKeyword: { type: Type.STRING },
-            localMustDos: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
+  // Run photo lookup and AI overview generation in parallel to halve loading latency
+  const photoPromise = Promise.race([
+    resolveExactPlacePhotoWithGooglePlaces(
+      city && city !== 'Local Area' ? city : locationName,
+      city,
+      lat,
+      lng,
+      undefined,
+      gmpApiKey
+    ).catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 2200)),
+  ]);
+
+  let resolvedPhotoUrl = '';
+  try {
+    const [photoResult, aiRes] = await Promise.all([
+      photoPromise,
+      generateContentWithFallback(ai, {
+        model: 'gemini-3.1-flash-lite',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              headline: { type: Type.STRING },
+              description: { type: Type.STRING },
+              photoKeyword: { type: Type.STRING },
+              localMustDos: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+              },
+              currentAtmosphere: { type: Type.STRING },
             },
-            currentAtmosphere: { type: Type.STRING },
+            required: ['headline', 'description', 'localMustDos', 'currentAtmosphere'],
           },
-          required: ['headline', 'description', 'localMustDos', 'currentAtmosphere'],
         },
-      },
-    });
+      }),
+    ]);
+
+    if (photoResult?.hasRealPhoto && photoResult.photoUrl) {
+      resolvedPhotoUrl = photoResult.photoUrl;
+    }
 
     const parsed = safeJsonParse<any>(aiRes.text, {});
 
@@ -1749,28 +1970,8 @@ app.post('/api/city/info', async (req, res) => {
       (c) => c.name.toLowerCase() === targetCity.toLowerCase()
     );
 
-    // Resolve an authentic photo for this city
-    let resolvedPhoto = popularPreset?.photoUrl || '';
-    if (!resolvedPhoto) {
-      try {
-        const gmpApiKey = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
-        const photoResult = await resolveExactPlacePhotoWithGooglePlaces(
-          targetCity,
-          state || country,
-          undefined,
-          undefined,
-          undefined,
-          gmpApiKey
-        );
-        if (photoResult.hasRealPhoto && photoResult.photoUrl) {
-          resolvedPhoto = photoResult.photoUrl;
-        }
-      } catch (e) {
-        console.warn('City photo resolve failed:', e);
-      }
-    }
-
     const ai = getGenAI();
+    const gmpApiKey = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
     const prompt = `You are Charaiva, the world-renowned AI heritage historian and tourist guide.
 Generate a structured, captivating, and highly accurate TWO-TIER City Tourist Dossier for the city: "${targetCity}", State: "${state}", Country: "${country}".
 Language Requirement: Produce ALL text fields strictly in "${language}".
@@ -1794,55 +1995,75 @@ Tier 2 (In-Depth Guide - for "Explore More"):
 - "topDistricts": array of objects with { "name": string, "character": string, "mustSee": string } (3-4 top neighborhoods)
 - "visitorInsiderTips": string[] (4-5 practical tips on local transit, best times, cultural etiquette, shopping)`;
 
-    const aiRes = await generateContentWithFallback(ai, {
-      model: 'gemini-3.1-flash-lite',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            cityName: { type: Type.STRING },
-            state: { type: Type.STRING },
-            country: { type: Type.STRING },
-            moniker: { type: Type.STRING },
-            briefOverview: { type: Type.STRING },
-            quickHighlights: { type: Type.ARRAY, items: { type: Type.STRING } },
-            famousFoods: { type: Type.ARRAY, items: { type: Type.STRING } },
-            bestTimeToVisit: { type: Type.STRING },
-            climateAndGeography: { type: Type.STRING },
-            foundingAndHistory: { type: Type.STRING },
-            architecturalHeritage: { type: Type.STRING },
-            culinaryTrail: { type: Type.STRING },
-            topDistricts: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  character: { type: Type.STRING },
-                  mustSee: { type: Type.STRING },
+    // Resolve photo and AI city dossier concurrently
+    const photoLookupPromise = popularPreset?.photoUrl
+      ? Promise.resolve(popularPreset.photoUrl)
+      : Promise.race([
+          resolveExactPlacePhotoWithGooglePlaces(
+            targetCity,
+            state || country,
+            undefined,
+            undefined,
+            undefined,
+            gmpApiKey
+          )
+            .then((r) => (r.hasRealPhoto && r.photoUrl ? r.photoUrl : ''))
+            .catch(() => ''),
+          new Promise<string>((resolve) => setTimeout(() => resolve(''), 2200)),
+        ]);
+
+    const [resolvedPhoto, aiRes] = await Promise.all([
+      photoLookupPromise,
+      generateContentWithFallback(ai, {
+        model: 'gemini-3.1-flash-lite',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              cityName: { type: Type.STRING },
+              state: { type: Type.STRING },
+              country: { type: Type.STRING },
+              moniker: { type: Type.STRING },
+              briefOverview: { type: Type.STRING },
+              quickHighlights: { type: Type.ARRAY, items: { type: Type.STRING } },
+              famousFoods: { type: Type.ARRAY, items: { type: Type.STRING } },
+              bestTimeToVisit: { type: Type.STRING },
+              climateAndGeography: { type: Type.STRING },
+              foundingAndHistory: { type: Type.STRING },
+              architecturalHeritage: { type: Type.STRING },
+              culinaryTrail: { type: Type.STRING },
+              topDistricts: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: { type: Type.STRING },
+                    character: { type: Type.STRING },
+                    mustSee: { type: Type.STRING },
+                  },
+                  required: ['name', 'character', 'mustSee'],
                 },
-                required: ['name', 'character', 'mustSee'],
               },
+              visitorInsiderTips: { type: Type.ARRAY, items: { type: Type.STRING } },
             },
-            visitorInsiderTips: { type: Type.ARRAY, items: { type: Type.STRING } },
+            required: [
+              'cityName',
+              'moniker',
+              'briefOverview',
+              'quickHighlights',
+              'famousFoods',
+              'bestTimeToVisit',
+              'foundingAndHistory',
+              'architecturalHeritage',
+              'culinaryTrail',
+              'visitorInsiderTips',
+            ],
           },
-          required: [
-            'cityName',
-            'moniker',
-            'briefOverview',
-            'quickHighlights',
-            'famousFoods',
-            'bestTimeToVisit',
-            'foundingAndHistory',
-            'architecturalHeritage',
-            'culinaryTrail',
-            'visitorInsiderTips',
-          ],
         },
-      },
-    });
+      }),
+    ]);
 
     const parsed = safeJsonParse<any>(aiRes.text, {});
     const resultData = {

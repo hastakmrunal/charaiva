@@ -12,6 +12,7 @@ export interface ProgressiveStreamOptions {
   voiceGender?: 'female' | 'male';
   sampleFallback?: Partial<RecognitionResult>;
   onBatch1: (data: Partial<RecognitionResult>) => void;
+  onDelta?: (data: Partial<RecognitionResult>) => void;
   onBatch2: (data: Partial<RecognitionResult>) => void;
   onBatch3: (data: Partial<RecognitionResult>) => void;
   onComplete?: (finalResult: RecognitionResult) => void;
@@ -36,6 +37,7 @@ export function streamLandmarkRecognition({
   voiceGender = 'female',
   sampleFallback,
   onBatch1,
+  onDelta,
   onBatch2,
   onBatch3,
   onComplete,
@@ -123,6 +125,14 @@ export function streamLandmarkRecognition({
         },
       };
       onBatch1(mergedResult);
+    } else if (type === 'batch2_delta') {
+      mergedResult = {
+        ...mergedResult,
+        ...data,
+        imageUrl: imageBase64,
+        isStreaming: true,
+      };
+      onDelta?.(mergedResult);
     } else if (type === 'batch2') {
       mergedResult = {
         ...mergedResult,
@@ -262,6 +272,7 @@ export function streamLandmarkRecognition({
           ...data.landmark,
           id: data.landmark.id || scanId,
           imageUrl: imageBase64,
+          language: data.landmark.language || language,
         };
 
         // Dispatch Batch 2
@@ -304,7 +315,7 @@ export function streamLandmarkRecognition({
             ...matchedSample,
             id: `fb-${Date.now()}`,
             imageUrl: imageBase64 || matchedSample.imageUrl,
-            language,
+            language: matchedSample.language || 'English',
             batchStatus: {
               batch1Ready: true,
               batch2Ready: true,

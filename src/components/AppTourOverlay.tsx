@@ -18,8 +18,7 @@ import {
   CheckCircle2,
   X,
 } from 'lucide-react';
-import { GuideSettings, Language } from '../types';
-import { MeenakshiLogo } from './MeenakshiLogo';
+import { GuideSettings, Language, UserProfile } from '../types';
 import { speechManager } from '../utils/speech';
 import introHeroImg from '../assets/images/intro_heritage_hero_1794280981908.jpg';
 import tourPillarsImg from '../assets/images/tour_vision_pillars_1794280982922.jpg';
@@ -28,6 +27,7 @@ import tourCityImg from '../assets/images/tour_city_skyline_1794280982464.jpg';
 interface AppTourOverlayProps {
   selectedLanguage: Language;
   guideSettings: GuideSettings;
+  userProfile?: UserProfile | null;
   isReplayMode?: boolean;
   onCompleteTour: () => void;
   onSkipTourToExploreNow: () => void;
@@ -234,6 +234,7 @@ const TOUR_STEPS: TourStepConfig[] = [
 export const AppTourOverlay: React.FC<AppTourOverlayProps> = ({
   selectedLanguage,
   guideSettings,
+  userProfile,
   isReplayMode = false,
   onCompleteTour,
   onSkipTourToExploreNow,
@@ -269,9 +270,10 @@ export const AppTourOverlay: React.FC<AppTourOverlayProps> = ({
     setIsSpeakingHint(true);
     speechManager.speak({
       text: currentStep.spokenHint,
+      language: 'English',
       languageCode: 'en-US',
       gender: guideSettings.voiceGender || 'female',
-      pitch: guideSettings.voicePitch || 1.08,
+      pitch: guideSettings.voicePitch || (guideSettings.voiceGender === 'male' ? 0.95 : 1.08),
       rate: guideSettings.speechRate || 1.0,
       onStart: () => setIsSpeakingHint(true),
       onEnd: () => setIsSpeakingHint(false),
@@ -314,7 +316,7 @@ export const AppTourOverlay: React.FC<AppTourOverlayProps> = ({
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none" />
           <div className="absolute bottom-3 left-3 right-3 text-white flex items-end justify-between gap-2">
             <div>
-              <p className="text-[10.5px] font-bold uppercase tracking-wider text-amber-300">
+              <p className="text-[10.5px] font-bold uppercase tracking-wider text-[var(--theme-accent-primary)]">
                 Screen {step.number} · {step.tabLabel}
               </p>
               <p className="text-xs font-medium text-white/95">{step.title}</p>
@@ -512,43 +514,30 @@ export const AppTourOverlay: React.FC<AppTourOverlayProps> = ({
   return (
     <div
       id="app-tour-overlay"
-      className="relative z-10 flex-1 h-full overflow-y-auto overflow-x-hidden flex flex-col select-none"
+      className="relative z-10 flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col select-none"
     >
-      {/* Top Bar with Step Progress & Persistent Skip Tour Escape */}
-      <header
+      {/* Compact Tour Step & Skip Bar */}
+      <div
         style={{
-          backgroundColor: 'var(--theme-header-bg)',
+          backgroundColor: 'var(--theme-card-bg)',
           borderColor: 'var(--theme-card-border)',
         }}
-        className="sticky top-0 z-30 border-b backdrop-blur-xl px-4 py-2.5 shrink-0"
+        className="sticky top-0 z-20 border-b backdrop-blur-xl px-4 py-2 shrink-0"
       >
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div
-              className="w-8 h-8 rounded-xl p-0.5 flex items-center justify-center shrink-0"
-              style={{ background: 'var(--theme-accent-primary-gradient)' }}
-            >
-              <div
-                className="w-full h-full rounded-[10px] flex items-center justify-center p-0.5"
-                style={{ backgroundColor: 'var(--theme-card-bg-subtle)' }}
-              >
-                <MeenakshiLogo className="w-5 h-5" />
-              </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-serif font-bold text-[var(--theme-text-title)]">
+                Interactive Screen Tour
+              </span>
+              <span className="text-[var(--theme-text-muted)]">·</span>
+              <span className="font-semibold text-[var(--theme-accent-primary)] whitespace-nowrap">
+                Screen {stepIndex + 1} of {TOUR_STEPS.length}
+              </span>
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="font-serif font-bold text-[var(--theme-text-title)]">
-                  Charaiva App Tour
-                </span>
-                <span className="text-[var(--theme-text-muted)]">·</span>
-                <span className="font-semibold text-[var(--theme-accent-primary)] whitespace-nowrap">
-                  Screen {stepIndex + 1} of {TOUR_STEPS.length}
-                </span>
-              </div>
-              <p className="text-[11px] text-[var(--theme-text-muted)] truncate">
-                Learn what every screen does — skip anytime to explore live
-              </p>
-            </div>
+            <p className="text-[11px] text-[var(--theme-text-muted)] truncate hidden sm:block">
+              Learn what every screen does — or tap any option above to explore live
+            </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -564,7 +553,7 @@ export const AppTourOverlay: React.FC<AppTourOverlayProps> = ({
                   borderColor: 'var(--theme-card-border)',
                   color: 'var(--theme-text-body)',
                 }}
-                className="min-h-[44px] px-3 rounded-xl border text-xs font-semibold hidden sm:flex items-center gap-1 cursor-pointer hover:border-[var(--theme-card-border-glow)] whitespace-nowrap shrink-0"
+                className="min-h-[38px] px-3 rounded-xl border text-xs font-semibold hidden sm:flex items-center gap-1 cursor-pointer hover:border-[var(--theme-card-border-glow)] whitespace-nowrap shrink-0"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Intro</span>
@@ -580,14 +569,14 @@ export const AppTourOverlay: React.FC<AppTourOverlayProps> = ({
                 borderColor: 'var(--theme-card-border)',
                 color: 'var(--theme-text-title)',
               }}
-              className="min-h-[44px] px-3.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:border-[var(--theme-accent-primary)] active:scale-95 transition-all whitespace-nowrap shrink-0"
+              className="min-h-[38px] px-3.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:border-[var(--theme-accent-primary)] active:scale-95 transition-all whitespace-nowrap shrink-0"
             >
               <X className="w-3.5 h-3.5 text-[var(--theme-accent-primary)]" />
               <span>{isReplayMode ? 'Close Tour' : 'Skip Tour & Explore Now'}</span>
             </button>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Centered Tour Card Container */}
       <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-5 sm:py-7 flex flex-col justify-between gap-6">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppTab, Language, RecognitionResult, LocationCoords, UserProfile } from '../types';
 import { PlaceCardImage } from './PlaceCardImage';
+import { WordByWordText } from './WordByWordText';
 import {
   Camera,
   Sparkles,
@@ -102,7 +103,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   }, [lat, lng, effectiveLocationName, selectedLanguage.name]);
 
   return (
-    <div id="home-screen" className="h-full flex flex-col overflow-hidden py-1 space-y-2 select-none">
+    <div id="home-screen" className="h-full flex flex-col overflow-y-auto py-1 space-y-2 select-none">
       {/* Location Hero Banner with Live Authentic Photo & Atmosphere */}
       <div
         style={{
@@ -176,10 +177,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </div>
 
             <p className="text-xs text-[var(--theme-text-body)] line-clamp-2 leading-relaxed">
-              {locationOverview?.description ||
-                (isManualLocationMode
-                  ? `Welcome to ${effectiveLocationName}. Discover real local spots, heritage monuments, and culinary delights in ${effectiveCity} in ${selectedLanguage.nativeName}.`
-                  : `Welcome to ${effectiveLocationName}. Discover real local spots around your GPS and snap any sight for instant voice narration in ${selectedLanguage.nativeName}.`)}
+              {locationOverview?.description ? (
+                <WordByWordText text={locationOverview.description} />
+              ) : isManualLocationMode ? (
+                `Welcome to ${effectiveLocationName}. Discover real local spots, heritage monuments, and culinary delights in ${effectiveCity} in ${selectedLanguage.nativeName}.`
+              ) : (
+                `Welcome to ${effectiveLocationName}. Discover real local spots around your GPS and snap any sight for instant voice narration in ${selectedLanguage.nativeName}.`
+              )}
             </p>
           </div>
 

@@ -40,7 +40,6 @@ import {
   loadUserFromFirestore,
   TRAVELER_TYPE_PRESETS,
 } from '../utils/userPersistence';
-import { MeenakshiLogo } from './MeenakshiLogo';
 
 const POPULAR_DESTINATIONS = [
   { country: 'India', state: 'Tamil Nadu', city: 'Madurai', lat: 9.9195, lng: 78.1193, flag: '🇮🇳' },
@@ -302,43 +301,30 @@ export const LoginOnboardingScreen: React.FC<LoginOnboardingScreenProps> = ({
   return (
     <div
       id="login-onboarding-screen"
-      className="relative z-10 flex-1 h-full overflow-y-auto overflow-x-hidden flex flex-col select-none"
+      className="relative z-10 flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col select-none"
     >
-      {/* Top Bar */}
-      <header
+      {/* Compact Setup Step & Guest Action Bar */}
+      <div
         style={{
-          backgroundColor: 'var(--theme-header-bg)',
+          backgroundColor: 'var(--theme-card-bg)',
           borderColor: 'var(--theme-card-border)',
         }}
-        className="sticky top-0 z-30 border-b backdrop-blur-xl px-4 py-2.5 shrink-0"
+        className="sticky top-0 z-20 border-b backdrop-blur-xl px-4 py-2 shrink-0"
       >
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div
-              className="w-8 h-8 rounded-xl p-0.5 flex items-center justify-center shrink-0"
-              style={{ background: 'var(--theme-accent-primary-gradient)' }}
-            >
-              <div
-                className="w-full h-full rounded-[10px] flex items-center justify-center p-0.5"
-                style={{ backgroundColor: 'var(--theme-card-bg-subtle)' }}
-              >
-                <MeenakshiLogo className="w-5 h-5" />
-              </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-serif font-bold text-[var(--theme-text-title)]">
+                Explorer Sign In &amp; Preferences
+              </span>
+              <span className="text-[var(--theme-text-muted)]">·</span>
+              <span className="font-semibold text-[var(--theme-accent-primary)] whitespace-nowrap">
+                Step {step} of 2
+              </span>
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="font-serif font-bold text-[var(--theme-text-title)]">
-                  Charaiva Sign In
-                </span>
-                <span className="text-[var(--theme-text-muted)]">·</span>
-                <span className="font-semibold text-[var(--theme-accent-primary)] whitespace-nowrap">
-                  Step {step} of 2
-                </span>
-              </div>
-              <p className="text-[11px] text-[var(--theme-text-muted)] truncate">
-                Set your details once — synced automatically to Settings
-              </p>
-            </div>
+            <p className="text-[11px] text-[var(--theme-text-muted)] truncate hidden sm:block">
+              Set your details once — synced automatically to Settings
+            </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -346,7 +332,7 @@ export const LoginOnboardingScreen: React.FC<LoginOnboardingScreenProps> = ({
               <button
                 type="button"
                 onClick={onReviewIntro}
-                className="min-h-[40px] px-2.5 text-xs font-semibold text-[var(--theme-text-muted)] hover:text-[var(--theme-text-title)] hidden sm:inline cursor-pointer whitespace-nowrap"
+                className="min-h-[36px] px-2.5 text-xs font-semibold text-[var(--theme-text-muted)] hover:text-[var(--theme-text-title)] hidden sm:inline cursor-pointer whitespace-nowrap"
               >
                 Intro
               </button>
@@ -355,7 +341,7 @@ export const LoginOnboardingScreen: React.FC<LoginOnboardingScreenProps> = ({
               <button
                 type="button"
                 onClick={onReviewTour}
-                className="min-h-[40px] px-2.5 text-xs font-semibold text-[var(--theme-text-muted)] hover:text-[var(--theme-text-title)] hidden sm:inline cursor-pointer whitespace-nowrap"
+                className="min-h-[36px] px-2.5 text-xs font-semibold text-[var(--theme-text-muted)] hover:text-[var(--theme-text-title)] hidden sm:inline cursor-pointer whitespace-nowrap"
               >
                 Tour
               </button>
@@ -369,13 +355,13 @@ export const LoginOnboardingScreen: React.FC<LoginOnboardingScreenProps> = ({
                 borderColor: 'var(--theme-card-border)',
                 color: 'var(--theme-text-title)',
               }}
-              className="min-h-[44px] px-3.5 rounded-xl border text-xs font-bold cursor-pointer hover:border-[var(--theme-accent-primary)] transition-all whitespace-nowrap shrink-0"
+              className="min-h-[38px] px-3.5 rounded-xl border text-xs font-bold cursor-pointer hover:border-[var(--theme-accent-primary)] transition-all whitespace-nowrap shrink-0"
             >
               Skip &amp; Explore as Guest
             </button>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
       <div className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">

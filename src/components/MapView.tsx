@@ -4,13 +4,14 @@ import { DeviceExactLocation } from '../utils/geolocation';
 import { PlaceCardImage } from './PlaceCardImage';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Compass, Volume2, ArrowRight, MapPin, RefreshCw } from 'lucide-react';
+import { Compass, Volume2, ArrowLeft, ArrowRight, MapPin, RefreshCw } from 'lucide-react';
 
 interface MapViewProps {
   locationCoords: LocationCoords | null;
   deviceExactLocation?: DeviceExactLocation | null;
   isManualLocationMode?: boolean;
   onSelectLandmarkToScan: (landmark: RecognitionResult) => void;
+  onBackToHome?: () => void;
 }
 
 interface MapSpot {
@@ -48,6 +49,7 @@ export const MapView: React.FC<MapViewProps> = ({
   deviceExactLocation,
   isManualLocationMode = false,
   onSelectLandmarkToScan,
+  onBackToHome,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -173,7 +175,7 @@ export const MapView: React.FC<MapViewProps> = ({
       const isSelected = selectedSpot?.id === spot.id;
       const spotIcon = L.divIcon({
         className: 'custom-spot-pin',
-        html: `<div style="background:${isSelected ? '#f59e0b' : '#78350f'}; color:#ffffff; width:${isSelected ? '32px' : '26px'}; height:${isSelected ? '32px' : '26px'}; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #ffffff; box-shadow:0 2px 8px rgba(0,0,0,0.6); cursor:pointer; font-size:12px; transition:all 0.2s;">🏛️</div>`,
+        html: `<div style="background:${isSelected ? '#2a9d8f' : '#334155'}; color:#ffffff; width:${isSelected ? '32px' : '26px'}; height:${isSelected ? '32px' : '26px'}; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #ffffff; box-shadow:0 2px 8px rgba(0,0,0,0.45); cursor:pointer; font-size:12px; transition:all 0.2s;">🏛️</div>`,
         iconSize: isSelected ? [32, 32] : [26, 26],
       });
 
@@ -213,14 +215,33 @@ export const MapView: React.FC<MapViewProps> = ({
         }}
         className="shrink-0 flex items-center justify-between p-2.5 border rounded-2xl backdrop-blur-xl shadow-lg"
       >
-        <div>
-          <h3 className="text-xs sm:text-sm font-serif font-bold text-[var(--theme-text-title)] flex items-center gap-1.5">
-            <Compass className="w-4 h-4 text-[var(--theme-accent-primary)]" />
-            <span>Interactive Sightseeing Map</span>
-          </h3>
-          <p className="text-[11px] text-[var(--theme-accent-secondary)]">
-            {isManualLocationMode ? `Discovered attractions in ${locationName}` : `Real spots discovered around your GPS in ${locationName}`}
-          </p>
+        <div className="flex items-center gap-2">
+          {onBackToHome && (
+            <button
+              id="btn-map-back-home"
+              type="button"
+              onClick={onBackToHome}
+              style={{
+                backgroundColor: 'var(--theme-card-bg-subtle)',
+                borderColor: 'var(--theme-card-border)',
+                color: 'var(--theme-text-title)',
+              }}
+              className="p-2 rounded-xl border cursor-pointer hover:border-[var(--theme-card-border-glow)] transition-all active:scale-95 shrink-0"
+              title="Back to Home"
+              aria-label="Back to Home"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          )}
+          <div>
+            <h3 className="text-xs sm:text-sm font-serif font-bold text-[var(--theme-text-title)] flex items-center gap-1.5">
+              <Compass className="w-4 h-4 text-[var(--theme-accent-primary)]" />
+              <span>Interactive Sightseeing Map</span>
+            </h3>
+            <p className="text-[11px] text-[var(--theme-accent-secondary)]">
+              {isManualLocationMode ? `Discovered attractions in ${locationName}` : `Real spots discovered around your GPS in ${locationName}`}
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-1 text-[10px] theme-badge-teal font-bold shadow-sm">

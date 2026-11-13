@@ -15,6 +15,7 @@ export interface PlacePhotoItem {
 
 export interface PlaceCardImageProps {
   placeName: string;
+  displayTitle?: string;
   placeId?: string;
   initialImageUrl?: string;
   authorAttributions?: AuthorAttribution[];
@@ -53,6 +54,7 @@ function getCategoryFallbackImage(category: string = 'monument', placeName: stri
 
 export const PlaceCardImage: React.FC<PlaceCardImageProps> = ({
   placeName,
+  displayTitle,
   placeId,
   initialImageUrl,
   authorAttributions = [],
@@ -65,6 +67,7 @@ export const PlaceCardImage: React.FC<PlaceCardImageProps> = ({
   showGalleryButton = true,
   showAttribution = true,
 }) => {
+  const shownTitle = displayTitle || placeName;
   const fallbackUrl = getCategoryFallbackImage(category, placeName);
 
   const [photoList, setPhotoList] = useState<string[]>(() => {
@@ -273,7 +276,7 @@ export const PlaceCardImage: React.FC<PlaceCardImageProps> = ({
         {/* Main Image */}
         <img
           src={activeUrl}
-          alt={placeName}
+          alt={shownTitle}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           onError={handleImageError}
           loading="lazy"
@@ -377,7 +380,7 @@ export const PlaceCardImage: React.FC<PlaceCardImageProps> = ({
                   {cityName && <span className="text-xs text-[var(--theme-accent-secondary)]">{cityName}</span>}
                 </div>
                 <h3 className="text-base sm:text-lg font-serif font-bold text-[var(--theme-text-title)] truncate mt-1">
-                  {placeName}
+                  {shownTitle}
                 </h3>
               </div>
 
@@ -416,7 +419,7 @@ export const PlaceCardImage: React.FC<PlaceCardImageProps> = ({
             >
               <img
                 src={activeUrl}
-                alt={placeName}
+                alt={shownTitle}
                 className="w-full h-full object-contain"
                 referrerPolicy="no-referrer"
                 crossOrigin="anonymous"

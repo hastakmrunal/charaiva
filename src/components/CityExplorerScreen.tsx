@@ -13,6 +13,7 @@ import {
   Radio,
   Building,
   CheckCircle2,
+  ArrowLeft,
   ArrowRight,
   RefreshCw,
   Landmark,
@@ -59,6 +60,7 @@ interface CityExplorerScreenProps {
   onProceedToCamera: () => void;
   deviceExactLocation?: DeviceExactLocation | null;
   onRefreshGpsLocation?: () => Promise<void>;
+  onBackToHome?: () => void;
 }
 
 export const CityExplorerScreen: React.FC<CityExplorerScreenProps> = ({
@@ -74,6 +76,7 @@ export const CityExplorerScreen: React.FC<CityExplorerScreenProps> = ({
   onProceedToMap,
   deviceExactLocation,
   onRefreshGpsLocation,
+  onBackToHome,
 }) => {
   // Cascading Dropdown States: Country -> State -> City
   const [selectedCountryName, setSelectedCountryName] = useState<string>('India');
@@ -328,18 +331,37 @@ export const CityExplorerScreen: React.FC<CityExplorerScreenProps> = ({
         }}
         className="shrink-0 p-2.5 sm:p-3 rounded-2xl border shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 backdrop-blur-md"
       >
-        <div>
-          <div className="flex items-center gap-1.5">
-            <Radio className="w-4 h-4 text-[var(--theme-accent-primary)]" />
-            <h2 className="text-xs sm:text-sm font-serif font-bold text-[var(--theme-text-title)]">
-              Exploration Location Mode
-            </h2>
+        <div className="flex items-center gap-2">
+          {onBackToHome && (
+            <button
+              id="btn-city-back-home"
+              type="button"
+              onClick={onBackToHome}
+              style={{
+                backgroundColor: 'var(--theme-card-bg-subtle)',
+                borderColor: 'var(--theme-card-border)',
+                color: 'var(--theme-text-title)',
+              }}
+              className="p-2 rounded-xl border cursor-pointer hover:border-[var(--theme-card-border-glow)] transition-all active:scale-95 shrink-0"
+              title="Back to Home"
+              aria-label="Back to Home"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          )}
+          <div>
+            <div className="flex items-center gap-1.5">
+              <Radio className="w-4 h-4 text-[var(--theme-accent-primary)]" />
+              <h2 className="text-xs sm:text-sm font-serif font-bold text-[var(--theme-text-title)]">
+                Exploration Location Mode
+              </h2>
+            </div>
+            <p className="text-[11px] text-[var(--theme-text-muted)]">
+              {isManualLocationMode
+                ? `Currently exploring manually: ${currentCity} (App updated for this city)`
+                : `Automatic Live GPS Mode: ${currentLocationName}`}
+            </p>
           </div>
-          <p className="text-[11px] text-[var(--theme-text-muted)]">
-            {isManualLocationMode
-              ? `Currently exploring manually: ${currentCity} (App updated for this city)`
-              : `Automatic Live GPS Mode: ${currentLocationName}`}
-          </p>
         </div>
 
         {/* Switch Control with 2 Options */}
